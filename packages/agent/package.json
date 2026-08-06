@@ -1,0 +1,21 @@
+{
+  "name": "@drift/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@drift/core": "workspace:*",
+    "@genkit-ai/google-genai": "^1.40.1",
+    "genkit": "^1.40.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.9",
+    "typescript": "^5.9.3"
+  }
+}
