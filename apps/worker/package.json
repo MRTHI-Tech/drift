@@ -1,0 +1,24 @@
+{
+  "name": "@drift/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "drift-worker": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "@drift/agent": "workspace:*",
+    "@drift/core": "workspace:*",
+    "playwright": "1.62.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.9",
+    "tsx": "^4.23.9",
+    "typescript": "^5.9.3"
+  }
+}
