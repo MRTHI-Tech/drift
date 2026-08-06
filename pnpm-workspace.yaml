@@ -2,8 +2,16 @@ packages:
   - apps/*
   - packages/*
 
-onlyBuiltDependencies:
-  - '@tailwindcss/oxide'
-  - esbuild
-  - sharp
-  - unrs-resolver
+allowBuilds:
+  '@firebase/util': true
+  '@tailwindcss/oxide': true
+  esbuild: true
+  protobufjs: true
+  # sharp ships a prebuilt binary via @img/sharp-darwin-arm64; running its
+  # install script only triggers a doomed node-gyp source build.
+  sharp: false
+  unrs-resolver: true
+
+minimumReleaseAgeExclude:
+  - shadcn@4.16.2
+  - tsx@4.23.9
