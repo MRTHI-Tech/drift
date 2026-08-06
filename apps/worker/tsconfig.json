@@ -2,6 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    // The computed-style walker runs inside the page, so it needs the DOM
+    // types even though the worker itself is a Node process.
+    "lib": ["ES2022", "DOM"],
     "types": ["node"]
   },
   "include": ["src/**/*.ts"]

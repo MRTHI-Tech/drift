@@ -28,7 +28,7 @@ All documents carry `projectId` except `projects` themselves. Never query across
 
 - **projects/{projectId}** — `name`, `repo` (owner/name), `previewUrl`, `defaultBranch`, `configPath` (default `drift.config.json`), `createdAt`, `driftScore` (number, 0–100), `lastRunAt`.
 - **runs/{runId}** — `projectId`, `trigger` (`scheduled` | `deploy` | `manual`), `startedAt`, `finishedAt`, `routesChecked`, `status` (`clean` | `findings` | `error`), `findingIds` (array), `error` (nullable).
-- **screens/{screenId}** — `projectId`, `route`, `viewport` (`mobile` | `desktop`), `runId`, `screenshotPath`, `computedStyles` (the extracted resolved-value record), `signature` (see Signature type), `archetypeId` (nullable), `embedding` (vector, stored as array), `capturedAt`.
+- **screens/{screenId}** — `projectId`, `route`, `viewport` (`mobile` | `desktop`), `runId`, `screenshotPath` (`gs://bucket/object`), `computedStyles` (the extracted resolved-value record: keyed by stable selector, each value `{tag, box: {x, y, width, height}, styles}`, where `styles` carries exactly the properties in `STYLE_PROPERTIES` in `packages/core/src/constants.ts`), `text` (each element's own visible text, keyed by the same selectors as `computedStyles`, absent for elements with none), `signature` (see Signature type, null until the signature phase has run), `archetypeId` (nullable), `embedding` (vector, stored as array, null until the embedding phase has run), `capturedAt`.
 - **archetypes/{archetypeId}** — `projectId`, `label` (model-proposed, user-editable), `screenIds`, `createdAt`.
 - **conventions/{conventionId}** — `projectId`, `archetypeId` (nullable for product-wide), `property` (e.g. `cta.label`, `heading.size`, `copy.case`), `value`, `confidence` (`low` | `medium` | `high`), `evidenceScreenIds`, `exceptions` (array of `{screenId, reason}`), `status` (`derived` | `promoted` | `removed`), `updatedAt`.
 - **findings/{findingId}** — `projectId`, `runId`, `type` (`token` | `pattern`), `screenId`, `conventionId` (nullable for token findings), `evidence` (structured: property, observedValue, expectedValue, siblingScreenIds), `severity`, `status` (`open` | `resolved_conform` | `resolved_update_siblings` | `resolved_exception` | `dismissed`), `dedupeKey`, `prNumber` (nullable), `createdAt`, `resolvedAt`.
@@ -93,7 +93,9 @@ Any finding proposed by a model call must be verified against the `computedStyle
 
 ## 8. Environment variables, canonical list
 
-`GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `FIRESTORE_DATABASE` (default `(default)`), `STORAGE_BUCKET`, `GITHUB_TOKEN`, `GITHUB_REPO_ALLOWLIST` (comma-separated owner/name the agent may open PRs against), `FIREBASE_*` (auth client config), `NEXT_PUBLIC_APP_URL`.
+`GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `FIRESTORE_DATABASE` (default `(default)`), `STORAGE_BUCKET`, `GITHUB_TOKEN`, `GITHUB_REPO_ALLOWLIST` (comma-separated owner/name the agent may open PRs against), `PREVIEW_AUTH_COOKIE_VALUE` (value the render worker puts in the cookie named by `authCookieName`), `FIREBASE_*` (auth client config), `NEXT_PUBLIC_APP_URL`.
+
+A project whose config sets `authCookieName` fails its run before the browser launches when `PREVIEW_AUTH_COOKIE_VALUE` is empty. Rendering a login page under a signed-in route's name would poison every later comparison, so this is loud rather than silent.
 
 The `GITHUB_REPO_ALLOWLIST` is a hard gate: the agent refuses to open a PR against any repo not on it, regardless of what Firestore says.
 

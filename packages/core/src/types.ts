@@ -4,6 +4,8 @@
  * updating AGENTS.md in the same commit.
  */
 
+import type { StyleProperty } from "./constants"
+
 export type Viewport = "mobile" | "desktop"
 
 export type RunTrigger = "scheduled" | "deploy" | "manual"
@@ -23,12 +25,42 @@ export type Confidence = "low" | "medium" | "high"
 
 export type ConventionStatus = "derived" | "promoted" | "removed"
 
-/** Resolved CSS values keyed by selector, then by property. */
-export type ComputedStyles = Record<string, Record<string, string>>
+/** Axis-aligned box of an element, in CSS pixels relative to the document. */
+export interface BoundingBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** The resolved CSS properties recorded for one element. */
+export type StyleValues = Record<StyleProperty, string>
+
+/** One visible element as the extractor recorded it. */
+export interface ElementStyles {
+  /** Lowercase tag name, for example `button`. */
+  tag: string
+  box: BoundingBox
+  styles: StyleValues
+}
+
+/**
+ * Every visible element of a screen, keyed by the stable selector the
+ * extractor built for it. The reconciliation gate (AGENTS.md section 3) reads
+ * observed values out of this record and nowhere else.
+ */
+export type ComputedStyles = Record<string, ElementStyles>
+
+/**
+ * Visible text of each element, keyed by the same selector as
+ * `ComputedStyles`. Only an element's own text nodes, so an ancestor never
+ * repeats what its children say. Elements with no text of their own are absent.
+ */
+export type ScreenText = Record<string, string>
 
 /**
  * Deterministic fingerprint of a rendered screen. Built without a model call
- * (AGENTS.md section 4). Filled in by the signature phase.
+ * (AGENTS.md section 4). Null on a screen the signature phase has not reached.
  */
 export interface Signature {
   route: string
@@ -72,11 +104,15 @@ export interface Screen {
   route: string
   viewport: Viewport
   runId: string
+  /** `gs://bucket/object` of the full-page PNG. */
   screenshotPath: string
   computedStyles: ComputedStyles
-  signature: Signature
+  text: ScreenText
+  /** Null until the signature phase runs. */
+  signature: Signature | null
   archetypeId: string | null
-  embedding: number[]
+  /** Null until the embedding phase runs. */
+  embedding: number[] | null
   capturedAt: Date
 }
 
