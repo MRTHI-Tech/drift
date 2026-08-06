@@ -1,0 +1,23 @@
+node_modules/
+.pnpm-store/
+
+# builds
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# test / tooling output
+coverage/
+.turbo/
+playwright-report/
+test-results/
+
+# os
+.DS_Store

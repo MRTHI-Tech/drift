@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm -v)",
+      "Bash(npm -v)",
+      "Bash(git --version)",
+      "Bash(git -C /Users/tlotliso/Desktop/Drift status)"
+    ]
+  }
+}
