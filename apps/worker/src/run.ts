@@ -284,21 +284,21 @@ function startingRun(
  * This phase produces no findings, so a run is clean when every target
  * rendered and an error when any did not. Partial results stay persisted
  * either way.
+ *
+ * A route counts as checked only when every viewport of it rendered: half a
+ * route is not a route a later phase can compare.
  */
 export function summarizeRun(
   targets: RenderTarget[],
   failures: TargetFailure[],
 ): { status: RunStatus; routesChecked: number; error: string | null } {
-  const failed = new Set(failures.map((failure) => describeTarget(failure.target)))
-  const checked = new Set(
-    targets
-      .filter((target) => !failed.has(describeTarget(target)))
-      .map((target) => target.route),
-  )
+  const failedRoutes = new Set(failures.map((failure) => failure.target.route))
+  const routes = new Set(targets.map((target) => target.route))
+  const checked = [...routes].filter((route) => !failedRoutes.has(route))
 
   return {
     status: failures.length === 0 ? "clean" : "error",
-    routesChecked: checked.size,
+    routesChecked: checked.length,
     error: failures.length === 0 ? null : describeFailures(targets.length, failures),
   }
 }

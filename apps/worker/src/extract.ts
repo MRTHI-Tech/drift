@@ -65,6 +65,13 @@ export function walkerOptions(): WalkerOptions {
  * source. Keep every helper nested and reference no imports.
  */
 export function collectElements({ properties, maxElements }: WalkerOptions): RawElement[] {
+  // tsx compiles this file through esbuild with `keepNames`, which wraps every
+  // named nested function in a `__name` helper that exists only in the Node
+  // module. The page gets the function source, not the module, so it has to
+  // find that helper here.
+  const scope = globalThis as unknown as { __name?: (value: unknown) => unknown }
+  scope.__name ??= (value) => value
+
   const skipTags = new Set([
     "script",
     "style",

@@ -114,6 +114,11 @@ async function createContext(
 
 /** Runs inside the page, on every document, before anything else. */
 function injectMotionOff(css: string): void {
+  // See the same shim in extract.ts: esbuild's `keepNames` helper does not
+  // exist inside the page.
+  const scope = globalThis as unknown as { __name?: (value: unknown) => unknown }
+  scope.__name ??= (value) => value
+
   const install = (): void => {
     const style = document.createElement("style")
     style.setAttribute("data-drift", "motion-off")

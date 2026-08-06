@@ -38,8 +38,8 @@ cp .env.example .env.local
 ```
 
 `.env.local` is gitignored. The canonical variable list lives in `AGENTS.md`
-section 8. Nothing in this phase reads any of them yet, so the dashboard and
-worker both run with the file empty.
+section 8. The worker reads it directly: `pnpm worker` loads `.env.local` from
+the repo root if it is there.
 
 ## Scripts
 
@@ -50,7 +50,7 @@ Run these from the repo root.
 | `pnpm dev`       | Dashboard on http://localhost:3000                    |
 | `pnpm build`     | Production build of the dashboard                     |
 | `pnpm typecheck` | `tsc --noEmit` across every package                   |
-| `pnpm test`      | Vitest unit tests in `packages/core`                  |
+| `pnpm test`      | Vitest unit tests in `packages/core` and `apps/worker` |
 | `pnpm worker`    | Runs the worker CLI. Add `-- --help` for its options  |
 | `pnpm seed`      | Creates one watched project document in Firestore     |
 
@@ -60,6 +60,24 @@ default credentials on the machine (`gcloud auth application-default login`):
 ```bash
 pnpm seed --name "Acme" --repo "acme/web" --preview-url "https://acme-preview.a.run.app"
 ```
+
+## Running a render
+
+The worker renders exactly the routes in the watched repo's
+`drift.config.json`, at each viewport it declares, and writes one `screens`
+document per route per viewport plus one `runs` document.
+
+```bash
+pnpm worker -- run --project <projectId>
+```
+
+It needs `GOOGLE_CLOUD_PROJECT`, `STORAGE_BUCKET`, `GITHUB_TOKEN`, application
+default credentials, and, for a project whose config sets `authCookieName`,
+`PREVIEW_AUTH_COOKIE_VALUE`. Add `--dry-run` to render and extract without
+writing anything, or `--route /pricing` to limit the run to one route.
+
+A failed route is recorded and the run carries on. The run document is written
+even when every route fails, with `status: error` and the reason.
 
 ## Where things go
 
@@ -78,7 +96,9 @@ pnpm seed --name "Acme" --repo "acme/web" --preview-url "https://acme-preview.a.
 
 ## Status
 
-Phase 2, data layer. Shared types, typed Firestore repositories, the dedupe key,
-and the watched-project config schema all exist and are unit tested. The
-dashboard renders a placeholder page on the preset theme and the worker launches
-Chromium and exits. No auth, no render pipeline, no flows, no model calls yet.
+Phase 3, the render worker. The worker loads a project, reads its
+`drift.config.json` off GitHub, renders every declared route at every declared
+viewport with motion disabled, walks the resolved computed styles and visible
+text, uploads a full-page screenshot to Cloud Storage, and writes the `screens`
+and `runs` documents. No signatures, no token diffing, no model calls, no PRs
+yet. The dashboard still renders a placeholder page.
