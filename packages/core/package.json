@@ -8,11 +8,17 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed": "tsx scripts/seed.ts"
   },
   "devDependencies": {
     "@types/node": "^20.19.9",
+    "tsx": "4.23.9",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0",
+    "zod": "^4.4.3"
   }
 }

@@ -35,10 +35,24 @@ All documents carry `projectId` except `projects` themselves. Never query across
 - **resolutions/{resolutionId}** — `projectId`, `findingId`, `action`, `resultingConventionChange` (nullable), `createdAt`. Append-only. Never delete.
 
 Rules for working with this schema:
-- `dedupeKey` is deterministic from `projectId + route + property + observedValue`. A finding whose dedupeKey matches an open or resolved finding is not created again.
+- `dedupeKey` is deterministic from `projectId + route + property + observedValue`, as a sha256 of the length-prefixed parts. A finding whose dedupeKey matches an existing finding is not created again. That covers dismissed findings too: dismissal is a user decision, and since findings are never deleted, an existing document of any status stands.
 - Conventions require **3 or more agreeing screens** before they exist at all. Two screens agreeing is not a convention.
 - Nothing is hard-deleted except by an explicit user action on the conventions page. Findings are never deleted, only status-changed.
 - Schema changes require updating this file in the same commit.
+
+### 2a. `drift.config.json`, locked
+
+Each watched repo carries a `drift.config.json` at the project's `configPath`. It is the only declaration of what Drift renders; Drift never crawls (section 9). Unknown keys are rejected, so a typo is never silently ignored. Parsed by the zod schema in `packages/core/src/config.ts`.
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `routes` | array of absolute paths, non-empty, unique | required | Routes to render on the preview URL |
+| `viewports` | array of `mobile` \| `desktop`, non-empty, unique | `["mobile", "desktop"]` | Viewports each route is rendered at |
+| `authCookieName` | string or null | `null` | Session cookie the render worker sets to reach signed-in routes |
+| `seedData` | boolean | `false` | Whether the watched app needs its demo data seeded before a run |
+| `tokenDefinitionsPath` | string or null | `null` | Repo-relative path to the file defining the design tokens |
+
+Config changes require updating this table in the same commit.
 
 ## 3. The reconciliation gate, non-negotiable
 

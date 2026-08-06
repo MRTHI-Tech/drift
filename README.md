@@ -52,10 +52,22 @@ Run these from the repo root.
 | `pnpm typecheck` | `tsc --noEmit` across every package                   |
 | `pnpm test`      | Vitest unit tests in `packages/core`                  |
 | `pnpm worker`    | Runs the worker CLI. Add `-- --help` for its options  |
+| `pnpm seed`      | Creates one watched project document in Firestore     |
+
+Seeding a project needs `GOOGLE_CLOUD_PROJECT` set and Google application
+default credentials on the machine (`gcloud auth application-default login`):
+
+```bash
+pnpm seed --name "Acme" --repo "acme/web" --preview-url "https://acme-preview.a.run.app"
+```
 
 ## Where things go
 
 - Shared types: `packages/core/src/types.ts`, the single source of truth.
+- Firestore repositories: `packages/core/src/repositories/`, one per collection.
+  They return typed objects, never raw snapshots.
+- Watched-project config schema: `packages/core/src/config.ts`. The file shape
+  is documented in `AGENTS.md` section 2a.
 - Model IDs: `packages/agent/src/models.ts`, never inlined anywhere else.
 - Prompts: `packages/agent/src/prompts/`, one file per flow, named exports.
 - GitHub calls: `packages/core/src/github.ts` once phase work reaches it.
@@ -66,6 +78,7 @@ Run these from the repo root.
 
 ## Status
 
-Phase 1, workspace scaffolding. The dashboard renders a placeholder page on the
-preset theme. The worker launches Chromium and exits. No Firestore, no auth, no
-render pipeline, no flows yet.
+Phase 2, data layer. Shared types, typed Firestore repositories, the dedupe key,
+and the watched-project config schema all exist and are unit tested. The
+dashboard renders a placeholder page on the preset theme and the worker launches
+Chromium and exits. No auth, no render pipeline, no flows, no model calls yet.

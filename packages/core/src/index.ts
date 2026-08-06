@@ -1,2 +1,6 @@
+export * from "./config"
 export * from "./constants"
+export * from "./dedupe"
+export * from "./firestore"
+export * from "./repositories"
 export * from "./types"
