@@ -1,0 +1,39 @@
+# Builds apps/dashboard and pushes it to Artifact Registry.
+#
+#   gcloud builds submit --config cloudbuild.dashboard.yaml \
+#     --substitutions=_REGION=REGION .
+#
+# Cloud Build rather than a local `docker build` for two reasons. The image has
+# to be linux/amd64 and a laptop with Apple silicon builds arm64 by default,
+# which Cloud Run rejects at deploy time with a message that does not say so.
+# And the build needs no Docker daemon on the machine doing the deploying.
+#
+# The final `.` is the build context: the repo root, because this is a pnpm
+# workspace. What does not get uploaded is in .dockerignore.
+
+substitutions:
+  _REGION: us-central1
+  _REPOSITORY: drift
+  _IMAGE: drift-dashboard
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - --file=apps/dashboard/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE}:${BUILD_ID}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE}:latest
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE}:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE}:latest
+
+options:
+  machineType: E2_HIGHCPU_8
+  # Cloud Build declines to run without one of these once the build runs as a
+  # named service account, which it does in any project created recently.
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1800s

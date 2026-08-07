@@ -1,0 +1,33 @@
+# Builds apps/worker and pushes it to Artifact Registry.
+#
+#   gcloud builds submit --config cloudbuild.worker.yaml \
+#     --substitutions=_REGION=REGION .
+#
+# Same reasoning as cloudbuild.dashboard.yaml: linux/amd64 from a machine that
+# may not be, and no local Docker daemon required. This one is the slower of the
+# two, because the Playwright base image is about a gigabyte.
+
+substitutions:
+  _REGION: us-central1
+  _REPOSITORY: drift
+  _IMAGE: drift-worker
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - --file=apps/worker/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE}:${BUILD_ID}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE}:latest
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE}:${BUILD_ID}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE}:latest
+
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1800s

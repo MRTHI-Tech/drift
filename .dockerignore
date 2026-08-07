@@ -1,0 +1,34 @@
+# What Cloud Build does not need to upload. Both images build from the repo
+# root, because both need pnpm-workspace.yaml, the lockfile, and packages/core.
+
+node_modules
+**/node_modules
+
+# Build output. Both images build from source.
+.next
+**/.next
+out
+dist
+build
+*.tsbuildinfo
+
+# Secrets. Deployed environments read Secret Manager, never a file
+# (AGENTS.md section 1). This line is belt and braces: .env.local is
+# gitignored as well.
+.env
+.env.local
+.env.*.local
+
+# Not part of either image.
+.git
+.github
+.claude
+docs
+deploy.md
+README.md
+AGENTS.md
+firestore.indexes.json
+coverage
+playwright-report
+test-results
+.DS_Store

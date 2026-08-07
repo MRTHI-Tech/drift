@@ -17,9 +17,19 @@ if (existsSync(rootEnv)) {
   loadEnvFile(rootEnv)
 }
 
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
+
 const nextConfig: NextConfig = {
   // @drift/core is consumed as TypeScript source, not as a built package.
   transpilePackages: ["@drift/core"],
+
+  // The Cloud Run image runs `.next/standalone/apps/dashboard/server.js` with
+  // no `node_modules` install of its own, so the build has to work out which
+  // files the server actually needs and copy them. Tracing starts at the
+  // monorepo root rather than at this app, because `@drift/core` and the parts
+  // of `node_modules` pnpm links it through both sit above this directory.
+  output: "standalone",
+  outputFileTracingRoot: repoRoot,
 }
 
 export default nextConfig
