@@ -7,7 +7,7 @@ import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { SignInWithGoogle } from "@/components/sign-in-with-google"
+import { SignIn } from "@/components/sign-in"
 import { readFirebaseClientConfig } from "@/lib/firebase-config"
 import { readSession } from "@/lib/session"
 
@@ -35,7 +35,10 @@ export default async function LoginPage() {
         </div>
 
         {firebase.config ? (
-          <SignInWithGoogle config={firebase.config} />
+          <SignIn
+            config={firebase.config}
+            allowAnonymous={process.env.NODE_ENV !== "production"}
+          />
         ) : (
           <Alert variant="destructive">
             <AlertTitle>Firebase Auth is not configured</AlertTitle>

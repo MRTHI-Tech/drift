@@ -33,9 +33,16 @@ export async function POST(request: Request): Promise<Response> {
   let cookie: string
   try {
     cookie = await mintSessionCookie(idToken)
-  } catch {
-    // Deliberately vague. What exactly was wrong with a token is not something
-    // to tell whoever sent it.
+  } catch (error) {
+    // Vague to the caller: what exactly was wrong with a token is not something
+    // to tell whoever sent it. Specific in the log, because a sign-in that
+    // fails for a configuration reason is otherwise undebuggable. Structured
+    // JSON so Cloud Run picks it up (AGENTS.md section 7), and never the token.
+    console.log({
+      event: "auth.session_rejected",
+      message: error instanceof Error ? error.message : String(error),
+      code: readErrorCode(error),
+    })
     return Response.json(
       { error: "That sign-in was not accepted." },
       { status: 401 }
@@ -70,4 +77,11 @@ async function readIdToken(request: Request): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+/** The Firebase Admin error code, when the failure carries one. */
+function readErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null
+  const code = (error as Record<string, unknown>).code
+  return typeof code === "string" ? code : null
 }
