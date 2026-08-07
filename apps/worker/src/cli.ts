@@ -7,6 +7,7 @@ import { chromium } from "playwright"
 import { createLogger, errorMessage } from "./logger"
 import { ACTIONS_LINE, parseAction, resolveCommand } from "./resolve"
 import { runProject } from "./run"
+import { TRIGGERS_LINE, parseTrigger } from "./trigger"
 
 const USAGE = `drift-worker - renders a watched project's declared screens
 
@@ -24,6 +25,10 @@ Commands:
 Options:
   --project <id>   Project to run. Required by run and rules.
   --route <path>   Limit the run to one route. Repeatable.
+  --trigger <how>  One of: ${TRIGGERS_LINE}. What the run records as its
+                   reason for starting. Defaults to manual. Cloud Scheduler
+                   passes scheduled and the dashboard's deploy webhook passes
+                   deploy, both as container overrides on the Cloud Run job.
   --finding <id>   Finding to resolve. Required by resolve.
   --action <name>  One of: ${ACTIONS_LINE}. Required by resolve.
   --reason <text>  Why the screen is allowed to differ. Required by exception.
@@ -64,6 +69,7 @@ async function main(): Promise<number> {
     options: {
       project: { type: "string" },
       route: { type: "string", multiple: true },
+      trigger: { type: "string" },
       finding: { type: "string" },
       action: { type: "string" },
       reason: { type: "string" },
@@ -90,7 +96,7 @@ async function main(): Promise<number> {
 
   switch (command) {
     case "run":
-      return runCommand(values.project, values.route ?? [], dryRun)
+      return runCommand(values.project, values.route ?? [], values.trigger, dryRun)
     case "resolve":
       return resolve(values.finding, values.action, values.reason, dryRun)
     case "rules":
@@ -104,6 +110,7 @@ async function main(): Promise<number> {
 async function runCommand(
   project: string | undefined,
   routes: string[],
+  trigger: string | undefined,
   dryRun: boolean,
 ): Promise<number> {
   const projectId = project?.trim()
@@ -112,7 +119,13 @@ async function runCommand(
     return 1
   }
 
-  const summary = await runProject({ projectId, routes, dryRun, trigger: "manual" })
+  const parsedTrigger = parseTrigger(trigger)
+  if (!parsedTrigger) {
+    console.error(`--trigger must be one of: ${TRIGGERS_LINE}.\n\n${USAGE}`)
+    return 1
+  }
+
+  const summary = await runProject({ projectId, routes, dryRun, trigger: parsedTrigger })
 
   // A run that lost a target is a failed command, even though its screens and
   // its runs document were both written.

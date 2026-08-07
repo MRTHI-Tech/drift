@@ -34,8 +34,22 @@ export interface Capture {
   extraction: Extraction
 }
 
+/**
+ * Chromium's own sandbox needs kernel features a Cloud Run container does not
+ * offer, and its shared-memory directory there is a few megabytes, which is not
+ * enough for a full-page screenshot of a real product. Both are turned off in
+ * the deployed job and in nothing else: a laptop keeps the sandbox.
+ *
+ * The condition is `CLOUD_RUN_JOB`, which Cloud Run sets on every execution of
+ * a job by itself. Nothing has to be configured for this to be right, and it
+ * cannot be set to the wrong thing by hand.
+ */
+export function launchArgs(): string[] {
+  return process.env.CLOUD_RUN_JOB ? ["--no-sandbox", "--disable-dev-shm-usage"] : []
+}
+
 export async function launchBrowser(): Promise<Browser> {
-  return chromium.launch()
+  return chromium.launch({ args: launchArgs() })
 }
 
 /**

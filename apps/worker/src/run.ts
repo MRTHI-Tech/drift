@@ -101,6 +101,10 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
     repo: project.repo,
     previewUrl: project.previewUrl,
     dryRun,
+    // Cloud Run sets this on every execution of a job. Logging it once is what
+    // connects a runId in Firestore to an execution on the job's console page,
+    // in both directions. Null on a laptop.
+    execution: process.env.CLOUD_RUN_EXECUTION ?? null,
   })
 
   try {
