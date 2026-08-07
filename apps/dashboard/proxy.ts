@@ -14,8 +14,16 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { SESSION_COOKIE } from "@/lib/session"
 
-/** Paths reachable without a session. */
-const PUBLIC_PATHS = ["/login", "/api/auth/session"]
+/**
+ * Paths reachable without a session.
+ *
+ * `/api/pubsub/deploy` is here because a Pub/Sub push subscription cannot carry
+ * a session cookie. Being on this list does not make it unguarded. It verifies
+ * the OIDC token Google signs every push with, against its own URL and against
+ * the one service account allowed to push, and that check is a real gate in the
+ * way this file is not.
+ */
+const PUBLIC_PATHS = ["/login", "/api/auth/session", "/api/pubsub/deploy"]
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl
