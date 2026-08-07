@@ -61,6 +61,7 @@ describe("tokenFinding", () => {
         expectedValue: "#4F46E5",
         expectedSource: "colors.brand.500",
         siblingScreenIds: [],
+        sentence: null,
       },
       severity: 3,
       status: "open",

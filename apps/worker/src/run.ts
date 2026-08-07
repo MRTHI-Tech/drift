@@ -1,10 +1,16 @@
 /**
  * One run: load the project, read its config and its design tokens off GitHub,
- * render every declared target, sign and diff what came back, persist it, and
- * write the `runs` document. A failed target is recorded and the run carries
- * on; the run document is written even when everything failed (AGENTS.md
- * section 7). Nothing in this pipeline calls a model (AGENTS.md section 4).
+ * render every declared target, sign and diff what came back, persist it, judge
+ * it against its siblings, and write the `runs` document. A failed target is
+ * recorded and the run carries on; the run document is written even when
+ * everything failed (AGENTS.md section 7).
+ *
+ * Render, extract, sign, diff, and persist never call a model. Judge does, and
+ * only after those have finished: it reads what they wrote and adds to it. A
+ * model that is unavailable costs the run its pattern findings and nothing
+ * else (AGENTS.md section 4).
  */
+import { judgeRun, type CapturedScreen } from "@drift/agent"
 import {
   buildSignature,
   countTokens,
@@ -101,7 +107,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
     }
     logger.log("render.planned", { targets: targets.length, routes: config.routes.length })
 
-    const { screenIds, findingIds, failures } = await renderAll({
+    const { screenIds, findingIds, captured, failures } = await renderAll({
       targets,
       settings,
       project,
@@ -111,6 +117,20 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       repositories,
       logger,
     })
+
+    // Judgment runs once, over everything the run captured, because an
+    // archetype and its conventions are a property of the set rather than of
+    // any one screen. Skipped on a dry run: it writes.
+    if (!dryRun && captured.length > 0) {
+      const judged = await judgeRun({
+        projectId: project.id,
+        runId,
+        screens: captured,
+        repositories,
+        logger,
+      })
+      findingIds.push(...judged.findingIds)
+    }
 
     const outcome = summarizeRun(targets, failures, findingIds.length)
     const summary: RunSummary = {
@@ -174,16 +194,26 @@ interface RenderAllInput {
 interface TargetResult {
   screenId: string
   findingIds: string[]
+  /**
+   * The stored screen and the image of it, held for the judgment phase. Held in
+   * memory rather than re-read from Cloud Storage: the run has just written
+   * both and judging happens seconds later.
+   */
+  captured: CapturedScreen
 }
 
-async function renderAll(
-  input: RenderAllInput,
-): Promise<{ screenIds: string[]; findingIds: string[]; failures: TargetFailure[] }> {
+async function renderAll(input: RenderAllInput): Promise<{
+  screenIds: string[]
+  findingIds: string[]
+  captured: CapturedScreen[]
+  failures: TargetFailure[]
+}> {
   const browser = await launchBrowser()
   input.logger.log("render.browser_ready", { chromium: browser.version() })
 
   const screenIds: string[] = []
   const findingIds: string[] = []
+  const captured: CapturedScreen[] = []
   try {
     const failures = await captureAll(
       input.targets,
@@ -192,10 +222,11 @@ async function renderAll(
         if (!result) return
         screenIds.push(result.screenId)
         findingIds.push(...result.findingIds)
+        captured.push(result.captured)
       },
       input.logger,
     )
-    return { screenIds, findingIds, failures }
+    return { screenIds, findingIds, captured, failures }
   } finally {
     await browser.close()
     input.logger.log("render.browser_closed")
@@ -233,7 +264,8 @@ export async function captureAll(
 
 /**
  * Renders one target, signs it, diffs it against the tokens, and writes the
- * screen and whatever findings the diff raised. Returns null on a dry run.
+ * screen and whatever findings the diff raised. Returns null on a dry run. No
+ * model is called here; judgment waits until every target is in.
  */
 async function renderOne(
   browser: Browser,
@@ -320,7 +352,11 @@ async function renderOne(
     alreadyKnown,
   })
 
-  return { screenId: screen.id, findingIds: created.map((finding) => finding.id) }
+  return {
+    screenId: screen.id,
+    findingIds: created.map((finding) => finding.id),
+    captured: { screen, screenshot: capture.screenshot },
+  }
 }
 
 /**

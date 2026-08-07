@@ -21,14 +21,18 @@ Options:
   --version        Print the pinned Chromium version and exit.
   --help           Print this message and exit.
 
-The pipeline is render -> extract -> sign -> diff -> judge -> persist. This
-phase covers everything except judge: screens are signed, their computed
-styles are diffed against the token file the config points at, and off-token
-values are written as findings of type token. No model is called.
+The pipeline is render -> extract -> sign -> diff -> judge -> persist. Screens
+are signed and their computed styles are diffed against the token file the
+config points at, which writes findings of type token without calling a model.
+Judgment then classifies each screen into an archetype, derives that
+archetype's conventions, and raises findings of type pattern where a screen
+departs from them. Every value a model cites is checked against the screen's
+own extraction record before anything is written; --dry-run skips judgment
+along with every other write.
 
-Needs GOOGLE_CLOUD_PROJECT, STORAGE_BUCKET, GITHUB_TOKEN, Google application
-default credentials, and PREVIEW_AUTH_COOKIE_VALUE for projects whose config
-sets authCookieName. See AGENTS.md section 8.
+Needs GOOGLE_CLOUD_PROJECT, STORAGE_BUCKET, GITHUB_TOKEN, GEMINI_API_KEY,
+Google application default credentials, and PREVIEW_AUTH_COOKIE_VALUE for
+projects whose config sets authCookieName. See AGENTS.md section 8.
 `
 
 async function main(): Promise<number> {

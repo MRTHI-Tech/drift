@@ -13,6 +13,16 @@ export interface ConventionRepository extends BaseRepository<Convention> {
   /** Product-wide conventions, the ones with no archetype. */
   listProductWide(projectId: string): Promise<Convention[]>
   /**
+   * The convention an archetype already holds for one property, or null. One
+   * archetype states a property once, so re-deriving updates that document
+   * rather than stacking a second opinion beside it.
+   */
+  findByProperty(
+    projectId: string,
+    archetypeId: string | null,
+    property: string,
+  ): Promise<Convention | null>
+  /**
    * Hard-deletes a convention. This is the only hard delete in Drift and is
    * reserved for an explicit user action on the conventions page
    * (AGENTS.md section 2).
@@ -48,6 +58,16 @@ export function createConventionRepository(db: Firestore): ConventionRepository 
 
     async listProductWide(projectId) {
       return readAll<Convention>(inProject(projectId).where("archetypeId", "==", null))
+    },
+
+    async findByProperty(projectId, archetypeId, property) {
+      const matches = await readAll<Convention>(
+        inProject(projectId)
+          .where("archetypeId", "==", archetypeId)
+          .where("property", "==", property)
+          .limit(1),
+      )
+      return matches[0] ?? null
     },
 
     async remove(id) {

@@ -191,6 +191,8 @@ export interface Convention {
   /** For example `cta.label`, `heading.size`, `copy.case`. */
   property: string
   value: string
+  /** Model-written, user-editable line naming the convention in plain language. */
+  label: string
   confidence: Confidence
   /** A convention needs 3 or more agreeing screens to exist at all. */
   evidenceScreenIds: string[]
@@ -209,6 +211,13 @@ export interface FindingEvidence {
   /** Name of the token or convention the expected value comes from, or null. */
   expectedSource: string | null
   siblingScreenIds: string[]
+  /**
+   * The one-line reading of this evidence, in plain language. Written by the
+   * judgment phase for a pattern finding, after the value it cites has passed
+   * the reconciliation gate. Null on a token finding, whose evidence is the
+   * value and the token alone.
+   */
+  sentence: string | null
 }
 
 export interface Finding {

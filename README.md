@@ -74,10 +74,14 @@ document per route per viewport plus one `runs` document.
 pnpm worker -- run --project <projectId>
 ```
 
-It needs `GOOGLE_CLOUD_PROJECT`, `STORAGE_BUCKET`, `GITHUB_TOKEN`, application
-default credentials, and, for a project whose config sets `authCookieName`,
-`PREVIEW_AUTH_COOKIE_VALUE`. Add `--dry-run` to render, sign, and diff without
-writing anything, or `--route /pricing` to limit the run to one route.
+It needs `GOOGLE_CLOUD_PROJECT`, `STORAGE_BUCKET`, `GITHUB_TOKEN`,
+`GEMINI_API_KEY`, application default credentials, and, for a project whose
+config sets `authCookieName`, `PREVIEW_AUTH_COOKIE_VALUE`. Add `--dry-run` to
+render, sign, and diff without writing anything, or `--route /pricing` to limit
+the run to one route.
+
+A dry run skips judgment along with every other write, and a run limited to one
+route has no siblings to compare that route against.
 
 A failed route is recorded and the run carries on. The run document is written
 even when every route fails, with `status: error` and the reason.
@@ -110,6 +114,49 @@ A project whose config declares no `tokenDefinitionsPath`, or whose path is
 stale, still renders and still signs. The run logs `tokens.not_declared`,
 `tokens.missing`, or `tokens.unreadable` and skips the diff.
 
+## Archetypes, conventions, and pattern drift
+
+Judgment runs once per run, after every route is in, because an archetype and
+its conventions are properties of a set of screens rather than of any one
+screen. It is additive: it reads what the deterministic phases wrote and adds
+to it, and a model that is unavailable costs a run its pattern findings and
+nothing else.
+
+**Archetypes** are found by distance, not by opinion. Each screen's signature is
+encoded as text, embedded, and compared against the archetypes the project
+already has. A screen near one joins it, a group of three or more screens near
+each other starts a new one, and a screen near nothing stays unassigned. An
+unassigned screen is never judged for pattern drift: it has no siblings, so
+there is nothing to compare it against. The model's only job here is to propose
+the label a family is filed under. Screens are compared within one viewport,
+because a route at 390px and the same route at 1440px are different layouts.
+
+**Conventions** are counted, not concluded. Each screen is projected onto a few
+element-scoped properties (`cta.label`, `cta.size`, `cta.radius`,
+`heading.size`, `heading.weight`), each carrying the selector its value was read
+from, and a value becomes a convention when it is the single most common one
+across three or more screens of the archetype. A tie means the family has not
+settled and states nothing. The model writes the convention's name and touches
+nothing else about it.
+
+**Pattern drift** is measured before a model sees it. A screen's profile is
+compared against its archetype's conventions and the disagreements become
+candidates, each already carrying a true selector, property, and observed
+value. The model receives that numbered list, the conventions, and the
+screenshot, and answers two questions per candidate: does this matter, and how
+would you say it in one line. It is never handed a screen and asked what is
+wrong with it.
+
+**The reconciliation gate** (`AGENTS.md` section 3) is the last thing between a
+model and Firestore, and it is inside the flow rather than beside it. Every
+proposal has to name a candidate from the list it was given, and the value it
+cites is read back out of the screen's own extraction record: a style value
+against `computedStyles`, a copy value against `text`, with the cited element
+required in `computedStyles` either way. Anything invented, rounded, reworded,
+or attributed to the wrong element is dropped silently and counted, and the
+counter is logged under `judge.gate`. Findings that survive are written as
+`findings` of type `pattern` through the same dedupe gate token findings use.
+
 ## Where things go
 
 - Shared types: `packages/core/src/types.ts`, the single source of truth.
@@ -130,10 +177,15 @@ stale, still renders and still signs. The run logs `tokens.not_declared`,
 
 ## Status
 
-Phase 4, the deterministic analysis layer. The worker loads a project, reads
-its `drift.config.json` and its token file off GitHub, renders every declared
-route at every declared viewport with motion disabled, walks the resolved
-computed styles and visible text, signs each screen, diffs it against the
-tokens, uploads a full-page screenshot to Cloud Storage, and writes the
-`screens`, `findings`, and `runs` documents. No model calls, no archetypes, no
-conventions, no PRs yet. The dashboard still renders a placeholder page.
+The model-powered layer. The worker loads a project, reads its
+`drift.config.json` and its token file off GitHub, renders every declared route
+at every declared viewport with motion disabled, walks the resolved computed
+styles and visible text, signs each screen, diffs it against the tokens,
+uploads a full-page screenshot to Cloud Storage, and writes the `screens`,
+`findings`, and `runs` documents. It then classifies each screen into an
+archetype, derives that archetype's conventions, and raises pattern findings
+where a screen departs from them, with every model-cited value reconciled
+against the screen's own record first.
+
+No PRs, no rules-file export, and no resolution flow yet. The dashboard still
+renders a placeholder page.

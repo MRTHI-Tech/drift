@@ -42,6 +42,9 @@ export function tokenFinding(input: TokenFindingInput): NewEntity<Finding> {
       expectedValue: candidate.nearestToken?.value ?? "",
       expectedSource: candidate.nearestToken?.name ?? null,
       siblingScreenIds: [],
+      // A token finding's evidence is the value and the token it missed. There
+      // is nothing for a model to say about it, so nothing writes this line.
+      sentence: null,
     },
     severity: candidate.severity,
     status: "open",
