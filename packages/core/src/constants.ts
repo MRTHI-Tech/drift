@@ -1,4 +1,4 @@
-import type { Viewport } from "./types"
+import type { RunTrigger, Viewport } from "./types"
 
 /** Firestore collection names, exactly as locked in AGENTS.md section 2. */
 export const COLLECTIONS = {
@@ -12,6 +12,17 @@ export const COLLECTIONS = {
 } as const
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS]
+
+/**
+ * Every way a run can start, as a list, so the worker's `--trigger` flag and
+ * anything else that has to name one derives from the type rather than
+ * repeating it.
+ */
+export const RUN_TRIGGERS = [
+  "scheduled",
+  "deploy",
+  "manual",
+] as const satisfies readonly RunTrigger[]
 
 /** Every viewport a route can be rendered at, in the order runs use. */
 export const VIEWPORTS = ["mobile", "desktop"] as const satisfies readonly Viewport[]
@@ -50,3 +61,23 @@ export const DEFAULT_BRANCH = "main"
 
 /** A convention needs this many agreeing screens before it exists at all. */
 export const MIN_SCREENS_PER_CONVENTION = 3
+
+/**
+ * The two names the deployed system has to agree on with itself.
+ *
+ * Constants rather than environment variables, because neither end can check
+ * the other: the dashboard starts the worker by naming its job, and it accepts
+ * a deploy webhook only from a push signed by one particular service account.
+ * `deploy.md` creates both by exactly these names. A name only one side knows
+ * is a name that can drift, which would be an unfortunate property for this
+ * repository to have.
+ *
+ * Everything else about the deployment stays in the environment (AGENTS.md
+ * section 8). These are identifiers, not configuration.
+ */
+export const DEPLOYMENT = {
+  /** Cloud Run job running `apps/worker`. */
+  workerJob: "drift-worker",
+  /** Service account Pub/Sub signs its push requests to the dashboard as. */
+  pushServiceAccount: "drift-pubsub",
+} as const

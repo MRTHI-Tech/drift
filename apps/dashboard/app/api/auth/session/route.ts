@@ -10,6 +10,7 @@
  * this dashboard should not sign the person out of Google everywhere.
  */
 
+import { createLogger, errorMessage } from "@drift/core"
 import { cookies } from "next/headers"
 
 import {
@@ -36,11 +37,12 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     // Vague to the caller: what exactly was wrong with a token is not something
     // to tell whoever sent it. Specific in the log, because a sign-in that
-    // fails for a configuration reason is otherwise undebuggable. Structured
-    // JSON so Cloud Run picks it up (AGENTS.md section 7), and never the token.
-    console.log({
-      event: "auth.session_rejected",
-      message: error instanceof Error ? error.message : String(error),
+    // fails for a configuration reason is otherwise undebuggable. Through the
+    // shared logger so Cloud Logging lifts it into `jsonPayload` and it is
+    // queryable beside everything a run writes (AGENTS.md section 7), and
+    // never the token.
+    createLogger().error("auth.session_rejected", {
+      message: errorMessage(error),
       code: readErrorCode(error),
     })
     return Response.json(
