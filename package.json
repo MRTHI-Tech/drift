@@ -11,7 +11,8 @@
     "build": "pnpm -r --sequential build",
     "typecheck": "pnpm -r --sequential typecheck",
     "test": "pnpm -r --sequential test",
-    "worker": "pnpm --filter @drift/worker start"
+    "worker": "pnpm --filter @drift/worker start",
+    "seed": "pnpm --filter @drift/core seed --"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
