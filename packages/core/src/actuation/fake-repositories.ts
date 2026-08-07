@@ -20,6 +20,7 @@ import type {
   Project,
   Resolution,
   Screen,
+  ScreenSummary,
 } from "../types"
 
 export interface FakeRepositories extends Repositories {
@@ -83,6 +84,20 @@ export function fakeRepositories(seed: FakeSeed = {}): FakeRepositories {
       async listByArchetype(_projectId, archetypeId) {
         return stored.screens.filter((screen) => screen.archetypeId === archetypeId)
       },
+      async listSummaries(projectId: string): Promise<ScreenSummary[]> {
+        return stored.screens
+          .filter((screen) => screen.projectId === projectId)
+          .map((screen) => ({
+            id: screen.id,
+            projectId: screen.projectId,
+            runId: screen.runId,
+            route: screen.route,
+            viewport: screen.viewport,
+            archetypeId: screen.archetypeId,
+            screenshotPath: screen.screenshotPath,
+            capturedAt: screen.capturedAt,
+          }))
+      },
     } as Repositories["screens"],
 
     archetypes: {
@@ -106,6 +121,11 @@ export function fakeRepositories(seed: FakeSeed = {}): FakeRepositories {
     findings: {
       async get(id) {
         return find(stored.findings, id)
+      },
+      async listOpen(projectId) {
+        return stored.findings.filter(
+          (finding) => finding.projectId === projectId && finding.status === "open",
+        )
       },
       async update(id, values) {
         return patch(stored.findings, id, values)

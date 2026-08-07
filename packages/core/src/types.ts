@@ -169,6 +169,18 @@ export interface Screen {
   capturedAt: Date
 }
 
+/**
+ * A screen without its extraction record. Not a collection of its own: it is a
+ * projection of `Screen` onto the fields that say which page this is and when
+ * it was captured. A `screens` document carries every resolved style and every
+ * visible string of a rendered page, so anything only needing to know which
+ * pages exist reads these instead of loading all of that.
+ */
+export type ScreenSummary = Pick<
+  Screen,
+  "id" | "projectId" | "runId" | "route" | "viewport" | "archetypeId" | "screenshotPath" | "capturedAt"
+>
+
 export interface Archetype {
   id: string
   projectId: string

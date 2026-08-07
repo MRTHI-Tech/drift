@@ -343,6 +343,41 @@ export async function branchSha(
   }
 }
 
+/** The head commit of a branch, as something a person can be shown. */
+export interface BranchCommit {
+  sha: string
+  committedAt: Date
+  /** Where the commit can be read on GitHub. */
+  url: string
+}
+
+/**
+ * When a branch last moved. A read, so no allowlist check: the gate is on
+ * writes. Returns null when the branch is not there, which is how the
+ * conventions page tells "never synced" from "synced and unreachable".
+ */
+export async function branchCommit(
+  octokit: Octokit,
+  { repo, branch }: BranchInput,
+): Promise<BranchCommit | null> {
+  const target = parseRepo(repo)
+
+  try {
+    const response = await octokit.rest.repos.getBranch({ ...target, branch })
+    const committed =
+      response.data.commit.commit.committer?.date ?? response.data.commit.commit.author?.date
+
+    return {
+      sha: response.data.commit.sha,
+      committedAt: committed ? new Date(committed) : new Date(0),
+      url: response.data.commit.html_url,
+    }
+  } catch (cause) {
+    if (isNotFound(cause)) return null
+    throw new GitHubError(`Could not read ${repo}#${branch}. ${describe(cause)}`, { cause })
+  }
+}
+
 export interface EnsureBranchInput extends BranchInput {
   /** Branch the new one starts from. Ignored when the branch already exists. */
   fromRef: string
@@ -517,6 +552,22 @@ export async function openPullRequest(
  * used because a branch name carrying a slash is otherwise ambiguous with a
  * path.
  */
+/**
+ * Where a pull request lives, from the number stored on a finding. Built rather
+ * than stored: a finding records the number GitHub answered with, and the
+ * address of that number is a fact about GitHub rather than about the finding.
+ */
+export function pullRequestUrl(repo: string, number: number): string {
+  const { owner, repo: name } = parseRepo(repo)
+  return `https://github.com/${owner}/${name}/pull/${number}`
+}
+
+/** A branch as a URL a person can open. */
+export function branchUrl(repo: string, branch: string): string {
+  const { owner, repo: name } = parseRepo(repo)
+  return `https://github.com/${owner}/${name}/tree/${encodeURIComponent(branch)}`
+}
+
 export function rawFileUrl(repo: string, branch: string, path: string): string {
   const { owner, repo: name } = parseRepo(repo)
   const encoded = path.split("/").map(encodeURIComponent).join("/")

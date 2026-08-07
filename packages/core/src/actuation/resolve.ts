@@ -19,6 +19,7 @@ import type { Octokit } from "@octokit/rest"
 
 import { createGitHubClient } from "../github"
 import { createRepositories, type Repositories } from "../repositories"
+import { refreshDriftScore, type DriftScoreRefresh } from "../score"
 import type { Convention, Finding, FindingStatus, Project, Resolution } from "../types"
 import { actuationError, silentActuationLogger, type ActuationLogger } from "./logging"
 import { openFixPullRequest, type PullRequestResult } from "./open-pr"
@@ -92,6 +93,8 @@ export interface ResolveFindingResult {
   pullRequestError: string | null
   rules: RulesSyncResult | null
   rulesError: string | null
+  /** The project's drift score after this decision. Null on a dry run. */
+  driftScore: DriftScoreRefresh | null
 }
 
 export async function resolveFinding(
@@ -155,6 +158,11 @@ export async function resolveFinding(
     conventionChange: change.summary,
   })
 
+  // The score is a count of what is still open, so it moves here, with the
+  // status, rather than after the pull request. GitHub being unreachable does
+  // not make the finding open again.
+  const driftScore = dryRun ? null : await rescore(project, repositories, logger)
+
   const outcome = await actuate({
     ...input,
     project,
@@ -172,6 +180,7 @@ export async function resolveFinding(
     status,
     prNumber: latest.prNumber,
     rulesChanged: outcome.rules?.changed ?? null,
+    driftScore: driftScore?.score ?? null,
   })
 
   return {
@@ -180,7 +189,37 @@ export async function resolveFinding(
     status,
     resolution,
     conventionChange: change.summary,
+    driftScore,
     ...outcome,
+  }
+}
+
+/**
+ * Recomputes the project's drift score. Caught rather than thrown: the decision
+ * is already recorded, and a score that is one resolution stale is a wrong
+ * number on a nav footer, not a reason to fail the resolution.
+ */
+async function rescore(
+  project: Project,
+  repositories: Repositories,
+  logger: ActuationLogger,
+): Promise<DriftScoreRefresh | null> {
+  try {
+    const refreshed = await refreshDriftScore(project.id, repositories)
+    logger.log("resolve.rescored", {
+      projectId: project.id,
+      from: project.driftScore,
+      to: refreshed.score,
+      openFindings: refreshed.openFindings,
+      screensChecked: refreshed.screensChecked,
+    })
+    return refreshed
+  } catch (error) {
+    logger.error("resolve.rescore_failed", {
+      projectId: project.id,
+      message: actuationError(error),
+    })
+    return null
   }
 }
 

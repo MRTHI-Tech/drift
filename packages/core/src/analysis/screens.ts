@@ -8,14 +8,26 @@
  * has been rendered.
  */
 
-import type { Screen } from "../types"
+import type { Viewport } from "../types"
+
+/**
+ * The fields choosing a capture depends on. Generic over the rest so the same
+ * function serves a whole `screens` document and the summary projection the
+ * dashboard reads, which differ only in what they carry beyond these.
+ */
+export interface CapturedScreen {
+  id: string
+  route: string
+  viewport: Viewport
+  capturedAt: Date
+}
 
 /**
  * The newest capture of each route and viewport, ordered by route and then by
  * id so two callers over the same set always read them in the same order.
  */
-export function latestPerRoute(screens: readonly Screen[]): Screen[] {
-  const newest = new Map<string, Screen>()
+export function latestPerRoute<T extends CapturedScreen>(screens: readonly T[]): T[] {
+  const newest = new Map<string, T>()
 
   for (const screen of screens) {
     const key = `${screen.route}|${screen.viewport}`
