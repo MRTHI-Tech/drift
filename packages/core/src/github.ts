@@ -11,7 +11,17 @@ import type { Project } from "./types"
 
 /** Raised when GitHub cannot be reached or answers with something unusable. */
 export class GitHubError extends Error {
-  override readonly name = "GitHubError"
+  // Typed as string rather than as the literal so a subclass can name itself.
+  override readonly name: string = "GitHubError"
+}
+
+/**
+ * Raised when a write is attempted against a repo that is not on
+ * `GITHUB_REPO_ALLOWLIST`. Its own class because it is not a transport
+ * failure and must never be retried, swallowed, or worked around.
+ */
+export class RepoNotAllowedError extends GitHubError {
+  override readonly name = "RepoNotAllowedError"
 }
 
 /** An `owner/name` repo, split. */
@@ -27,6 +37,44 @@ export function parseRepo(repo: string): RepoRef {
     throw new GitHubError(`A repo must be owner/name. Got ${repo}.`)
   }
   return { owner: parts[0], repo: parts[1] }
+}
+
+/**
+ * The repos Drift may write to, from `GITHUB_REPO_ALLOWLIST`
+ * (AGENTS.md section 8). Empty when the variable is unset, which means no repo
+ * is writable rather than every repo is.
+ */
+export function repoAllowlist(raw = process.env.GITHUB_REPO_ALLOWLIST): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+}
+
+/** Whether a repo is on the allowlist. Owner and name compare case-insensitively. */
+export function isRepoAllowed(repo: string, allowlist: readonly string[] = repoAllowlist()): boolean {
+  const wanted = repo.trim().toLowerCase()
+  return allowlist.some((entry) => entry.toLowerCase() === wanted)
+}
+
+/**
+ * The hard gate of AGENTS.md section 8, and the only thing standing between
+ * Drift and a stranger's repository. Every function in this module that writes
+ * calls this first, before it touches the network, regardless of what Firestore
+ * says the project's repo is. There is no flag that turns it off.
+ */
+export function assertRepoAllowed(
+  repo: string,
+  allowlist: readonly string[] = repoAllowlist(),
+): void {
+  if (isRepoAllowed(repo, allowlist)) return
+
+  const known = allowlist.length > 0 ? allowlist.join(", ") : "nothing"
+  throw new RepoNotAllowedError(
+    `${repo} is not on GITHUB_REPO_ALLOWLIST, which allows ${known}. ` +
+      "Drift opens no pull request against a repo that is not on it. " +
+      "See AGENTS.md section 8.",
+  )
 }
 
 /**
@@ -144,6 +192,335 @@ export async function fetchTokenDefinitions(
   if (text === null) return null
 
   return { path, tokens: parseTokenDefinitions(text, path) }
+}
+
+/** One source file of a watched repo, as a patch is planned against it. */
+export interface SourceFile {
+  /** Repo-relative path. */
+  path: string
+  text: string
+}
+
+/**
+ * Extensions a mechanical patch can be planned against: the files a label or a
+ * hardcoded value is actually written in. Everything else in a repo is read by
+ * nothing here.
+ */
+export const SOURCE_EXTENSIONS: readonly string[] = [
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".mts",
+  ".vue",
+  ".svelte",
+  ".astro",
+  ".html",
+  ".mdx",
+  ".css",
+  ".scss",
+  ".sass",
+  ".less",
+]
+
+/** Directories never read: build output, dependencies, and Drift's own folder. */
+export const IGNORED_DIRECTORIES: readonly string[] = [
+  "node_modules",
+  ".git",
+  ".next",
+  ".turbo",
+  ".vercel",
+  "dist",
+  "build",
+  "out",
+  "coverage",
+  "storybook-static",
+  ".drift",
+]
+
+/** Most source files read for one patch. A repo past this is not hand-authored. */
+export const MAX_SOURCE_FILES = 400
+
+/** Largest file read. A generated bundle is not where a label lives. */
+export const MAX_SOURCE_FILE_BYTES = 256 * 1024
+
+/** Whether a repo path is source a patch could be planned against. */
+export function isSourcePath(path: string): boolean {
+  const segments = path.split("/")
+  if (segments.some((segment) => IGNORED_DIRECTORIES.includes(segment))) return false
+
+  const name = segments[segments.length - 1] ?? ""
+  const dot = name.lastIndexOf(".")
+  if (dot <= 0) return false
+
+  return SOURCE_EXTENSIONS.includes(name.slice(dot).toLowerCase())
+}
+
+export interface SourceTreeInput {
+  /** `owner/name`. */
+  repo: string
+  /** Branch, tag, or sha. */
+  ref: string
+  limit?: number
+}
+
+/**
+ * Every source file of a repo at a ref, read as text.
+ *
+ * The whole tree comes back in one request and the blobs are then read one at a
+ * time, which is slower than a code search but exact: a patch is planned by
+ * matching a literal character for character, and a search index that is stale
+ * or fuzzy would plan a patch against a file that no longer says what it says.
+ */
+export async function fetchSourceFiles(
+  octokit: Octokit,
+  { repo, ref, limit = MAX_SOURCE_FILES }: SourceTreeInput,
+): Promise<SourceFile[]> {
+  const target = parseRepo(repo)
+
+  let tree
+  try {
+    const response = await octokit.rest.git.getTree({
+      ...target,
+      tree_sha: ref,
+      recursive: "true",
+    })
+    tree = response.data
+  } catch (cause) {
+    throw new GitHubError(`Could not read the tree of ${repo} at ${ref}. ${describe(cause)}`, {
+      cause,
+    })
+  }
+
+  const wanted = tree.tree
+    .filter(
+      (entry): entry is typeof entry & { path: string; sha: string } =>
+        entry.type === "blob" &&
+        typeof entry.path === "string" &&
+        typeof entry.sha === "string" &&
+        isSourcePath(entry.path) &&
+        (entry.size ?? 0) <= MAX_SOURCE_FILE_BYTES,
+    )
+    .slice(0, limit)
+
+  const files: SourceFile[] = []
+  for (const entry of wanted) {
+    const blob = await octokit.rest.git.getBlob({ ...target, file_sha: entry.sha })
+    if (blob.data.encoding !== "base64") continue
+    files.push({ path: entry.path, text: Buffer.from(blob.data.content, "base64").toString("utf8") })
+  }
+
+  return files
+}
+
+/** One file as a commit writes it. Text is UTF-8; a screenshot is a Buffer. */
+export interface CommitFile {
+  path: string
+  content: string | Buffer
+}
+
+export interface BranchInput {
+  /** `owner/name`. */
+  repo: string
+  branch: string
+}
+
+/** The head commit of a branch, or null when the branch is not there. */
+export async function branchSha(
+  octokit: Octokit,
+  { repo, branch }: BranchInput,
+): Promise<string | null> {
+  const target = parseRepo(repo)
+
+  try {
+    const response = await octokit.rest.git.getRef({ ...target, ref: `heads/${branch}` })
+    return response.data.object.sha
+  } catch (cause) {
+    if (isNotFound(cause)) return null
+    throw new GitHubError(`Could not read ${repo}#${branch}. ${describe(cause)}`, { cause })
+  }
+}
+
+export interface EnsureBranchInput extends BranchInput {
+  /** Branch the new one starts from. Ignored when the branch already exists. */
+  fromRef: string
+}
+
+export interface EnsureBranchResult {
+  sha: string
+  created: boolean
+}
+
+/** Creates a branch off `fromRef` unless it is already there. A write. */
+export async function ensureBranch(
+  octokit: Octokit,
+  { repo, branch, fromRef }: EnsureBranchInput,
+): Promise<EnsureBranchResult> {
+  assertRepoAllowed(repo)
+  const target = parseRepo(repo)
+
+  const existing = await branchSha(octokit, { repo, branch })
+  if (existing) return { sha: existing, created: false }
+
+  const base = await branchSha(octokit, { repo, branch: fromRef })
+  if (!base) {
+    throw new GitHubError(`${repo} has no branch ${fromRef} to start ${branch} from.`)
+  }
+
+  try {
+    const response = await octokit.rest.git.createRef({
+      ...target,
+      ref: `refs/heads/${branch}`,
+      sha: base,
+    })
+    return { sha: response.data.object.sha, created: true }
+  } catch (cause) {
+    throw new GitHubError(`Could not create ${repo}#${branch}. ${describe(cause)}`, { cause })
+  }
+}
+
+export interface CommitFilesInput extends BranchInput {
+  message: string
+  files: readonly CommitFile[]
+}
+
+export interface CommitResult {
+  /** Head of the branch after the call. */
+  sha: string
+  /** False when the files were already exactly what the branch holds. */
+  changed: boolean
+}
+
+/**
+ * Writes files onto an existing branch as one commit. A write.
+ *
+ * Built through the git data API rather than the contents API so several files
+ * land in a single commit, and so a commit that would change nothing is
+ * detected before it is made: the tree GitHub builds from the blobs is compared
+ * against the tree already on the branch, and an identical one is not committed.
+ * That is what lets the rules file be regenerated on every convention change
+ * without filling a branch with empty commits.
+ */
+export async function commitFiles(
+  octokit: Octokit,
+  { repo, branch, message, files }: CommitFilesInput,
+): Promise<CommitResult> {
+  assertRepoAllowed(repo)
+  const target = parseRepo(repo)
+
+  const head = await branchSha(octokit, { repo, branch })
+  if (!head) {
+    throw new GitHubError(`${repo} has no branch ${branch} to commit to.`)
+  }
+
+  try {
+    const parent = await octokit.rest.git.getCommit({ ...target, commit_sha: head })
+
+    const entries = []
+    for (const file of files) {
+      const blob = await octokit.rest.git.createBlob({
+        ...target,
+        content:
+          typeof file.content === "string"
+            ? Buffer.from(file.content, "utf8").toString("base64")
+            : file.content.toString("base64"),
+        encoding: "base64",
+      })
+      entries.push({
+        path: file.path,
+        mode: "100644" as const,
+        type: "blob" as const,
+        sha: blob.data.sha,
+      })
+    }
+
+    const tree = await octokit.rest.git.createTree({
+      ...target,
+      base_tree: parent.data.tree.sha,
+      tree: entries,
+    })
+
+    if (tree.data.sha === parent.data.tree.sha) return { sha: head, changed: false }
+
+    const commit = await octokit.rest.git.createCommit({
+      ...target,
+      message,
+      tree: tree.data.sha,
+      parents: [head],
+    })
+    await octokit.rest.git.updateRef({
+      ...target,
+      ref: `heads/${branch}`,
+      sha: commit.data.sha,
+    })
+
+    return { sha: commit.data.sha, changed: true }
+  } catch (cause) {
+    if (cause instanceof GitHubError) throw cause
+    throw new GitHubError(`Could not commit to ${repo}#${branch}. ${describe(cause)}`, { cause })
+  }
+}
+
+export interface PullRequestInput {
+  /** `owner/name`. */
+  repo: string
+  /** Branch the change is on. */
+  head: string
+  /** Branch it is proposed against. */
+  base: string
+  title: string
+  body: string
+}
+
+export interface PullRequestRef {
+  number: number
+  url: string
+  /** False when a pull request for this branch was already open. */
+  created: boolean
+}
+
+/**
+ * Opens a pull request, or returns the one already open for the branch. A
+ * write. Idempotent on purpose: resolving the same finding twice updates a
+ * pull request rather than stacking a second one beside it.
+ */
+export async function openPullRequest(
+  octokit: Octokit,
+  { repo, head, base, title, body }: PullRequestInput,
+): Promise<PullRequestRef> {
+  assertRepoAllowed(repo)
+  const target = parseRepo(repo)
+
+  const open = await octokit.rest.pulls.list({
+    ...target,
+    head: `${target.owner}:${head}`,
+    state: "open",
+  })
+  const existing = open.data[0]
+  if (existing) {
+    await octokit.rest.pulls.update({ ...target, pull_number: existing.number, title, body })
+    return { number: existing.number, url: existing.html_url, created: false }
+  }
+
+  try {
+    const response = await octokit.rest.pulls.create({ ...target, head, base, title, body })
+    return { number: response.data.number, url: response.data.html_url, created: true }
+  } catch (cause) {
+    throw new GitHubError(`Could not open a pull request on ${repo}. ${describe(cause)}`, { cause })
+  }
+}
+
+/**
+ * A file on a branch as a URL an image tag can load. The `refs/heads/` form is
+ * used because a branch name carrying a slash is otherwise ambiguous with a
+ * path.
+ */
+export function rawFileUrl(repo: string, branch: string, path: string): string {
+  const { owner, repo: name } = parseRepo(repo)
+  const encoded = path.split("/").map(encodeURIComponent).join("/")
+  return `https://raw.githubusercontent.com/${owner}/${name}/refs/heads/${branch}/${encoded}`
 }
 
 function isNotFound(cause: unknown): boolean {

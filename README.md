@@ -157,6 +157,66 @@ or attributed to the wrong element is dropped silently and counted, and the
 counter is logged under `judge.gate`. Findings that survive are written as
 `findings` of type `pattern` through the same dedupe gate token findings use.
 
+## Resolutions, pull requests, and the rules file
+
+A finding is an observation. What happens to it is a person's decision, and
+there are four of them. Each writes a `resolutions` document, which is
+append-only and never deleted, moves the finding's status, updates the
+convention where the action implies it, and opens a pull request where the
+action implies one.
+
+| Action | What it means | What it does |
+| --- | --- | --- |
+| conform | the convention was right | patches this screen to it |
+| update siblings | this screen was right | moves the convention here, promotes it, patches the siblings |
+| accept as exception | this screen may differ | records the reason on the convention, permanently |
+| dismiss | nothing to do | status only |
+
+All four go through `resolveFinding` in `packages/core/src/actuation/`, which is
+what both the dashboard's API routes and the worker's temporary CLI command
+call, so a finding resolved from a browser and one resolved from a terminal
+take exactly the same path.
+
+```bash
+pnpm worker -- resolve --finding <findingId> --action conform
+```
+
+**What Drift patches** is the mechanical class and only that: a label's text and
+a value that missed its token, substituted literal for literal. The match is
+bounded, so `Next` inside `Next.js` is not a label and `#ff0000` inside
+`#ff0000ff` is not a colour. Anything needing a judgment about code structure is
+permanently out of scope (`AGENTS.md` section 10) and waits for a person.
+
+**Unprompted pull requests** are a narrower subset again: a token finding,
+nobody has decided anything about it, it names the token it missed, and the
+patch is exactly one occurrence in one file sitting close enough to that token
+that snapping it is a correction rather than a choice. The one function drawing
+that line is `isAutonomousFix`, and every finding a run raises is logged under
+`actuate.decision` with the reason it was or was not acted on.
+
+**Branches** in the watched repo: `drift/fix-<findingId>` carries one patch and
+is what the pull request proposes; `drift/rules` carries `drift.rules.md`;
+`drift/evidence` carries the before and after images the pull request bodies
+embed and is never proposed or merged, so a pull request contains the patch and
+only the patch.
+
+**The rules file** is `drift.rules.md` at the root of the watched repo, written
+in imperative plain language for a coding agent: what to label the action on
+each kind of screen, what to set its type to, how the copy reads, and which
+screens are recorded exceptions. It is regenerated on any convention change,
+proposed as a pull request the first time and committed straight to
+`drift/rules` after that, and it carries no timestamp so an unchanged product
+regenerates an identical file and commits nothing.
+
+```bash
+pnpm worker -- rules --project <projectId> --dry-run
+```
+
+**The allowlist** is checked before every GitHub write and before any request
+leaves the process, against `GITHUB_REPO_ALLOWLIST` (`AGENTS.md` section 8). An
+unset variable means no repo is writable rather than every repo. A project whose
+repo is not on it still renders, signs, diffs, and judges; it opens nothing.
+
 ## Where things go
 
 - Shared types: `packages/core/src/types.ts`, the single source of truth.
@@ -169,7 +229,13 @@ counter is logged under `judge.gate`. Findings that survive are written as
   is documented in `AGENTS.md` section 2a.
 - Model IDs: `packages/agent/src/models.ts`, never inlined anywhere else.
 - Prompts: `packages/agent/src/prompts/`, one file per flow, named exports.
-- GitHub calls: `packages/core/src/github.ts` once phase work reaches it.
+- GitHub calls: `packages/core/src/github.ts`, all of them, including the
+  allowlist gate every write passes through first.
+- Actuation: `packages/core/src/actuation/`. Patch planning, pull request and
+  rules-file composition, the resolution engine, and the autonomy boundary.
+  Nothing in there calls a model either: the two things a pull request needs to
+  say are the evidence line the judgment phase already wrote and the
+  substitution the planner already measured.
 - UI components: add them with `npx shadcn@latest add <component>` inside
   `apps/dashboard`. They land in `components/ui/` and belong to the repo. Do
   not hand-write what the registry provides, and do not change the preset's
@@ -177,15 +243,24 @@ counter is logged under `judge.gate`. Findings that survive are written as
 
 ## Status
 
-The model-powered layer. The worker loads a project, reads its
-`drift.config.json` and its token file off GitHub, renders every declared route
-at every declared viewport with motion disabled, walks the resolved computed
-styles and visible text, signs each screen, diffs it against the tokens,
-uploads a full-page screenshot to Cloud Storage, and writes the `screens`,
-`findings`, and `runs` documents. It then classifies each screen into an
-archetype, derives that archetype's conventions, and raises pattern findings
-where a screen departs from them, with every model-cited value reconciled
-against the screen's own record first.
+Actuation. Drift now writes to GitHub.
 
-No PRs, no rules-file export, and no resolution flow yet. The dashboard still
-renders a placeholder page.
+The worker loads a project, reads its `drift.config.json` and its token file off
+GitHub, renders every declared route at every declared viewport with motion
+disabled, walks the resolved computed styles and visible text, signs each
+screen, diffs it against the tokens, uploads a full-page screenshot to Cloud
+Storage, and writes the `screens`, `findings`, and `runs` documents. It then
+classifies each screen into an archetype, derives that archetype's conventions,
+and raises pattern findings where a screen departs from them, with every
+model-cited value reconciled against the screen's own record first. Last, it
+asks the autonomy boundary about every token finding it raised and opens the
+pull requests that qualify.
+
+A finding can be resolved four ways, from the dashboard's API routes or from the
+worker's temporary CLI command, and a resolution opens the patch it implies,
+updates the convention it implies, and regenerates `drift.rules.md`.
+
+The dashboard has the writes and no pages: the resolution routes exist, the UI
+does not, and **the routes have no session check in front of them yet**
+(`AGENTS.md` section 1 requires one on every route except `/login`). Do not
+expose the dashboard on a deployed origin until Firebase Auth is wired up.

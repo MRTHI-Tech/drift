@@ -1,0 +1,196 @@
+/**
+ * The autonomous class, as a run reaches it.
+ *
+ * A run raises findings; a few of them are ones Drift may act on without being
+ * asked. Which few is decided by `isAutonomousFix` and by nothing else here:
+ * this module plans the patch that function needs to see, asks it, and does
+ * what it says. Every answer is logged with its reason, so the log of a run is
+ * a full account of what Drift could have done and why it did not.
+ *
+ * Nothing in here throws into the run. A repo that is not on the allowlist, a
+ * token that has expired, a patch that cannot be planned: each costs a finding
+ * its pull request and costs the run nothing. The findings are already written
+ * and are already waiting for a person, which is where everything starts.
+ */
+
+import type { Octokit } from "@octokit/rest"
+
+import { fetchSourceFiles, isRepoAllowed, type SourceFile } from "../github"
+import type { Repositories } from "../repositories"
+import type { Finding, Project } from "../types"
+import { isAutonomousFix } from "./autonomy"
+import { actuationError, silentActuationLogger, type ActuationLogger } from "./logging"
+import { openFixPullRequest } from "./open-pr"
+import { planFindingPatch } from "./patch"
+
+/** One finding a run raised, with what the diff knew when it raised it. */
+export interface AutonomousCandidate {
+  finding: Finding
+  /**
+   * How far the observed value sits from the token it would be snapped to:
+   * OKLab distance for a colour, pixels for a length. Only the run that
+   * measured it knows this, which is why it travels with the finding.
+   */
+  nearestTokenDistance: number | null
+}
+
+export interface AutonomousRunInput {
+  octokit: Octokit
+  project: Project
+  candidates: readonly AutonomousCandidate[]
+  repositories: Repositories
+  logger?: ActuationLogger
+  /** Decide everything, write nothing. */
+  dryRun?: boolean
+}
+
+export interface AutonomousRunResult {
+  considered: number
+  opened: { findingId: string; prNumber: number; url: string }[]
+  /** Findings the boundary left for a person, each with the reason it gave. */
+  waiting: { findingId: string; reason: string }[]
+  /** Findings that qualified but whose pull request could not be opened. */
+  failed: { findingId: string; message: string }[]
+}
+
+export async function openAutonomousPullRequests(
+  input: AutonomousRunInput,
+): Promise<AutonomousRunResult> {
+  const logger = input.logger ?? silentActuationLogger
+  const result: AutonomousRunResult = {
+    considered: input.candidates.length,
+    opened: [],
+    waiting: [],
+    failed: [],
+  }
+
+  if (input.candidates.length === 0) return result
+
+  // The allowlist, asked before a single request leaves the process. A project
+  // whose repo is not on it raises findings and opens nothing, quietly and
+  // permanently, whatever Firestore says its repo is (AGENTS.md section 8).
+  if (!isRepoAllowed(input.project.repo)) {
+    logger.log("actuate.repo_not_allowed", {
+      projectId: input.project.id,
+      repo: input.project.repo,
+      findings: input.candidates.length,
+    })
+    for (const candidate of input.candidates) {
+      result.waiting.push({
+        findingId: candidate.finding.id,
+        reason: `${input.project.repo} is not on GITHUB_REPO_ALLOWLIST.`,
+      })
+    }
+    return result
+  }
+
+  let files: SourceFile[]
+  try {
+    files = await fetchSourceFiles(input.octokit, {
+      repo: input.project.repo,
+      ref: input.project.defaultBranch,
+    })
+  } catch (error) {
+    const message = actuationError(error)
+    logger.error("actuate.source_unreadable", { repo: input.project.repo, message })
+    for (const candidate of input.candidates) {
+      result.waiting.push({ findingId: candidate.finding.id, reason: message })
+    }
+    return result
+  }
+
+  logger.log("actuate.start", {
+    projectId: input.project.id,
+    repo: input.project.repo,
+    considered: result.considered,
+    sourceFiles: files.length,
+    dryRun: input.dryRun ?? false,
+  })
+
+  for (const candidate of input.candidates) {
+    await consider(input, candidate, files, logger, result)
+  }
+
+  logger.log("actuate.finish", {
+    considered: result.considered,
+    opened: result.opened.length,
+    waiting: result.waiting.length,
+    failed: result.failed.length,
+  })
+
+  return result
+}
+
+async function consider(
+  input: AutonomousRunInput,
+  candidate: AutonomousCandidate,
+  files: readonly SourceFile[],
+  logger: ActuationLogger,
+  result: AutonomousRunResult,
+): Promise<void> {
+  const { finding } = candidate
+
+  const plan = planFindingPatch(finding, "conform", files)
+  const decision = isAutonomousFix({
+    finding,
+    plan,
+    nearestTokenDistance: candidate.nearestTokenDistance,
+  })
+
+  // The auditable line. Every finding a run raised appears here exactly once,
+  // whichever side of the boundary it fell on.
+  logger.log("actuate.decision", {
+    findingId: finding.id,
+    type: finding.type,
+    property: finding.evidence.property,
+    observedValue: finding.evidence.observedValue,
+    expectedSource: finding.evidence.expectedSource,
+    autonomous: decision.autonomous,
+    reason: decision.reason,
+  })
+
+  if (!decision.autonomous) {
+    result.waiting.push({ findingId: finding.id, reason: decision.reason })
+    return
+  }
+
+  try {
+    const opened = await openFixPullRequest({
+      octokit: input.octokit,
+      project: input.project,
+      finding,
+      direction: "conform",
+      opener: "run",
+      repositories: input.repositories,
+      sourceFiles: files,
+      logger,
+      dryRun: input.dryRun,
+    })
+
+    if (opened.opened && opened.number !== null && opened.url !== null) {
+      result.opened.push({ findingId: finding.id, prNumber: opened.number, url: opened.url })
+    } else {
+      result.waiting.push({
+        findingId: finding.id,
+        reason: opened.skipped ?? "Nothing was opened.",
+      })
+    }
+  } catch (error) {
+    const message = actuationError(error)
+    result.failed.push({ findingId: finding.id, message })
+    logger.error("actuate.failed", { findingId: finding.id, message })
+  }
+}
+
+/** The findings of a run that are worth asking the boundary about at all. */
+export function actuationCandidates(
+  findings: readonly Finding[],
+  distances: ReadonlyMap<string, number>,
+): AutonomousCandidate[] {
+  return findings
+    .filter((finding) => finding.type === "token" && finding.evidence.expectedSource !== null)
+    .map((finding) => ({
+      finding,
+      nearestTokenDistance: distances.get(finding.id) ?? null,
+    }))
+}

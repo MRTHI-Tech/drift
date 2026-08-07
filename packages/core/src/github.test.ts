@@ -1,8 +1,20 @@
 import type { Octokit } from "@octokit/rest"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 
 import { DriftConfigError } from "./config"
-import { GitHubError, createGitHubClient, fetchDriftConfig, fetchRepoFile, parseRepo } from "./github"
+import {
+  GitHubError,
+  RepoNotAllowedError,
+  assertRepoAllowed,
+  createGitHubClient,
+  fetchDriftConfig,
+  fetchRepoFile,
+  isRepoAllowed,
+  isSourcePath,
+  parseRepo,
+  rawFileUrl,
+  repoAllowlist,
+} from "./github"
 
 const source = { repo: "acme/web", configPath: "drift.config.json", defaultBranch: "main" }
 
@@ -47,6 +59,84 @@ describe("parseRepo", () => {
 describe("createGitHubClient", () => {
   it("refuses to run without a token", () => {
     expect(() => createGitHubClient(undefined)).toThrow(/GITHUB_TOKEN/)
+  })
+})
+
+/**
+ * The hard gate of AGENTS.md section 8. These are the tests that matter most in
+ * this file: everything else here costs a run its data, and this costs somebody
+ * a pull request on a repository that is not theirs to open one on.
+ */
+describe("the repo allowlist", () => {
+  const held = process.env.GITHUB_REPO_ALLOWLIST
+
+  afterEach(() => {
+    if (held === undefined) delete process.env.GITHUB_REPO_ALLOWLIST
+    else process.env.GITHUB_REPO_ALLOWLIST = held
+  })
+
+  it("reads a comma-separated list, ignoring the spaces around it", () => {
+    expect(repoAllowlist(" acme/web , acme/docs ")).toEqual(["acme/web", "acme/docs"])
+  })
+
+  it("treats an unset variable as no repo, not as every repo", () => {
+    expect(repoAllowlist(undefined)).toEqual([])
+    expect(isRepoAllowed("acme/web", repoAllowlist(undefined))).toBe(false)
+    expect(() => assertRepoAllowed("acme/web", [])).toThrow(RepoNotAllowedError)
+  })
+
+  it("allows a repo on the list, whatever its case", () => {
+    expect(isRepoAllowed("Acme/Web", ["acme/web"])).toBe(true)
+    expect(() => assertRepoAllowed("acme/WEB", ["Acme/Web"])).not.toThrow()
+  })
+
+  it("refuses one that is not, and says what is", () => {
+    expect(() => assertRepoAllowed("stranger/web", ["acme/web"])).toThrow(
+      /stranger\/web is not on GITHUB_REPO_ALLOWLIST, which allows acme\/web/,
+    )
+  })
+
+  it("refuses a repo that merely looks like one on the list", () => {
+    expect(isRepoAllowed("acme/web-staging", ["acme/web"])).toBe(false)
+    expect(isRepoAllowed("notacme/web", ["acme/web"])).toBe(false)
+    expect(isRepoAllowed("acme/web ", ["acme/webhooks"])).toBe(false)
+  })
+
+  it("reads the environment when no list is passed", () => {
+    process.env.GITHUB_REPO_ALLOWLIST = "acme/web"
+
+    expect(isRepoAllowed("acme/web")).toBe(true)
+    expect(isRepoAllowed("stranger/web")).toBe(false)
+  })
+})
+
+describe("isSourcePath", () => {
+  it("takes the files a label or a value is written in", () => {
+    expect(isSourcePath("app/pricing/page.tsx")).toBe(true)
+    expect(isSourcePath("styles/globals.css")).toBe(true)
+    expect(isSourcePath("theme.ts")).toBe(true)
+  })
+
+  it("leaves build output and dependencies alone", () => {
+    expect(isSourcePath("node_modules/react/index.js")).toBe(false)
+    expect(isSourcePath(".next/static/chunk.js")).toBe(false)
+    expect(isSourcePath("dist/app.js")).toBe(false)
+    expect(isSourcePath(".drift/evidence/finding1/before.png")).toBe(false)
+  })
+
+  it("leaves anything that is not source alone", () => {
+    expect(isSourcePath("README.md")).toBe(false)
+    expect(isSourcePath("public/logo.png")).toBe(false)
+    expect(isSourcePath("Dockerfile")).toBe(false)
+  })
+})
+
+describe("rawFileUrl", () => {
+  it("spells a branch carrying a slash so it cannot be read as a path", () => {
+    expect(rawFileUrl("acme/web", "drift/evidence", ".drift/evidence/f1/before.png")).toBe(
+      "https://raw.githubusercontent.com/acme/web/refs/heads/drift/evidence/" +
+        ".drift/evidence/f1/before.png",
+    )
   })
 })
 

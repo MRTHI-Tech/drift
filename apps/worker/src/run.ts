@@ -12,6 +12,7 @@
  */
 import { judgeRun, type CapturedScreen } from "@drift/agent"
 import {
+  actuationCandidates,
   buildSignature,
   countTokens,
   createGitHubClient,
@@ -19,14 +20,19 @@ import {
   diffScreenTokens,
   fetchDriftConfig,
   fetchTokenDefinitions,
+  openAutonomousPullRequests,
   persistTokenFindings,
+  tokenDedupeKey,
   uploadScreenshot,
+  type AutonomousRunResult,
   type DriftConfig,
+  type Finding,
   type Project,
   type Repositories,
   type Run,
   type RunStatus,
   type RunTrigger,
+  type TokenDriftCandidate,
   type TokenSet,
 } from "@drift/core"
 import type { Browser } from "playwright"
@@ -67,6 +73,8 @@ export interface RunSummary {
   /** Findings this run raised. A candidate an existing finding covers is not one. */
   findingIds: string[]
   failures: TargetFailure[]
+  /** What the autonomy boundary did with this run's findings, or null on a dry run. */
+  actuation: AutonomousRunResult | null
 }
 
 /** The authenticated GitHub client, without reaching past `@drift/core` for its type. */
@@ -107,16 +115,18 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
     }
     logger.log("render.planned", { targets: targets.length, routes: config.routes.length })
 
-    const { screenIds, findingIds, captured, failures } = await renderAll({
-      targets,
-      settings,
-      project,
-      runId,
-      dryRun,
-      tokens,
-      repositories,
-      logger,
-    })
+    const { screenIds, findingIds, tokenFindings, distances, captured, failures } = await renderAll(
+      {
+        targets,
+        settings,
+        project,
+        runId,
+        dryRun,
+        tokens,
+        repositories,
+        logger,
+      },
+    )
 
     // Judgment runs once, over everything the run captured, because an
     // archetype and its conventions are a property of the set rather than of
@@ -132,6 +142,13 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       findingIds.push(...judged.findingIds)
     }
 
+    // Actuation is last, after every finding this run could raise is written.
+    // It is additive in the same way judgment is: a pull request that cannot be
+    // opened costs a finding its patch and costs the run nothing.
+    const actuation = dryRun
+      ? null
+      : await actuateRun({ github, project, tokenFindings, distances, repositories, logger })
+
     const outcome = summarizeRun(targets, failures, findingIds.length)
     const summary: RunSummary = {
       runId,
@@ -141,6 +158,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       screenIds,
       findingIds,
       failures,
+      actuation,
     }
 
     if (run) {
@@ -159,6 +177,8 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       routesChecked: outcome.routesChecked,
       screensWritten: screenIds.length,
       findingsRaised: findingIds.length,
+      pullRequestsOpened: actuation?.opened.length ?? 0,
+      findingsWaiting: actuation?.waiting.length ?? 0,
       failed: failures.length,
       durationMs: Date.now() - startedAt.getTime(),
     })
@@ -193,7 +213,14 @@ interface RenderAllInput {
 /** What one target left behind. */
 interface TargetResult {
   screenId: string
-  findingIds: string[]
+  /** Token findings this target raised, as written. */
+  findings: Finding[]
+  /**
+   * How far each of those findings sat from the token it missed, by finding id.
+   * Only the diff that raised it knows this, and the autonomy boundary needs it
+   * later, so it is carried rather than recomputed.
+   */
+  distances: Map<string, number>
   /**
    * The stored screen and the image of it, held for the judgment phase. Held in
    * memory rather than re-read from Cloud Storage: the run has just written
@@ -205,6 +232,8 @@ interface TargetResult {
 async function renderAll(input: RenderAllInput): Promise<{
   screenIds: string[]
   findingIds: string[]
+  tokenFindings: Finding[]
+  distances: Map<string, number>
   captured: CapturedScreen[]
   failures: TargetFailure[]
 }> {
@@ -213,6 +242,8 @@ async function renderAll(input: RenderAllInput): Promise<{
 
   const screenIds: string[] = []
   const findingIds: string[] = []
+  const tokenFindings: Finding[] = []
+  const distances = new Map<string, number>()
   const captured: CapturedScreen[] = []
   try {
     const failures = await captureAll(
@@ -221,12 +252,14 @@ async function renderAll(input: RenderAllInput): Promise<{
         const result = await renderOne(browser, target, input)
         if (!result) return
         screenIds.push(result.screenId)
-        findingIds.push(...result.findingIds)
+        findingIds.push(...result.findings.map((finding) => finding.id))
+        tokenFindings.push(...result.findings)
+        for (const [findingId, distance] of result.distances) distances.set(findingId, distance)
         captured.push(result.captured)
       },
       input.logger,
     )
-    return { screenIds, findingIds, captured, failures }
+    return { screenIds, findingIds, tokenFindings, distances, captured, failures }
   } finally {
     await browser.close()
     input.logger.log("render.browser_closed")
@@ -354,8 +387,73 @@ async function renderOne(
 
   return {
     screenId: screen.id,
-    findingIds: created.map((finding) => finding.id),
+    findings: created,
+    distances: nearestTokenDistances(input.project.id, target.route, candidates, created),
     captured: { screen, screenshot: capture.screenshot },
+  }
+}
+
+/**
+ * How far each written finding sat from the token it missed, by finding id.
+ *
+ * The candidates and the findings are matched on the dedupe key rather than by
+ * position, because `persistTokenFindings` writes only the candidates no
+ * existing finding already covers and the two lists therefore do not line up.
+ */
+function nearestTokenDistances(
+  projectId: string,
+  route: string,
+  candidates: readonly TokenDriftCandidate[],
+  created: readonly Finding[],
+): Map<string, number> {
+  const byKey = new Map(
+    candidates.flatMap((candidate) =>
+      candidate.nearestToken
+        ? [[tokenDedupeKey(projectId, route, candidate), candidate.nearestToken.distance] as const]
+        : [],
+    ),
+  )
+
+  const distances = new Map<string, number>()
+  for (const finding of created) {
+    const distance = byKey.get(finding.dedupeKey)
+    if (distance !== undefined) distances.set(finding.id, distance)
+  }
+  return distances
+}
+
+interface ActuateRunInput {
+  github: GitHubClient
+  project: Project
+  tokenFindings: readonly Finding[]
+  distances: ReadonlyMap<string, number>
+  repositories: Repositories
+  logger: Logger
+}
+
+/**
+ * The autonomous class, asked once per run over everything it raised.
+ *
+ * Which findings may go out unprompted is `isAutonomousFix`'s decision and only
+ * its decision; this only hands it the findings and the distances the diff
+ * measured. Never throws: the findings are already written and already waiting
+ * for a person, which is where every finding starts.
+ */
+async function actuateRun(input: ActuateRunInput): Promise<AutonomousRunResult | null> {
+  const candidates = actuationCandidates(input.tokenFindings, input.distances)
+  if (candidates.length === 0) return null
+
+  try {
+    return await openAutonomousPullRequests({
+      octokit: input.github,
+      project: input.project,
+      candidates,
+      repositories: input.repositories,
+      logger: input.logger,
+    })
+  } catch (error) {
+    input.logger.error("actuate.error", { message: errorMessage(error) })
+    return null
   }
 }
 

@@ -12,6 +12,7 @@
 
 import {
   MIN_SCREENS_PER_CONVENTION,
+  latestPerRoute,
   type Archetype,
   type ComputedStyles,
   type Convention,
@@ -592,23 +593,10 @@ function toProfiled(screen: Screen): ProfiledScreen[] {
 /**
  * The newest capture of each route and viewport. An archetype accumulates a
  * screen per route per run, and a convention derived over six runs of the same
- * six screens would count each of them six times.
+ * six screens would count each of them six times. Re-exported from
+ * `@drift/core`, where the rules file counts screens by the same rule.
  */
-export function latestPerRoute(screens: readonly Screen[]): Screen[] {
-  const newest = new Map<string, Screen>()
-
-  for (const screen of screens) {
-    const key = `${screen.route}|${screen.viewport}`
-    const held = newest.get(key)
-    if (!held || screen.capturedAt.getTime() > held.capturedAt.getTime()) {
-      newest.set(key, screen)
-    }
-  }
-
-  return [...newest.values()].sort((left, right) =>
-    left.route === right.route ? (left.id < right.id ? -1 : 1) : left.route < right.route ? -1 : 1,
-  )
-}
+export { latestPerRoute }
 
 /**
  * An archetype label nothing else in the project is using. Clusters are formed

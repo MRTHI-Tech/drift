@@ -37,3 +37,30 @@ export async function uploadScreenshot(objectPath: string, body: Buffer): Promis
   })
   return storageUri(bucket.name, objectPath)
 }
+
+/** A `gs://bucket/object` path, split. Null for anything else. */
+export function parseStorageUri(uri: string): { bucket: string; objectPath: string } | null {
+  if (!uri.startsWith("gs://")) return null
+
+  const rest = uri.slice("gs://".length)
+  const slash = rest.indexOf("/")
+  if (slash <= 0 || slash === rest.length - 1) return null
+
+  return { bucket: rest.slice(0, slash), objectPath: rest.slice(slash + 1) }
+}
+
+/**
+ * Reads one stored screenshot back. Used when a pull request needs the image of
+ * a screen it is about; the bucket in the path is honoured rather than assumed,
+ * so a screen captured before the bucket changed still reads.
+ */
+export async function downloadScreenshot(uri: string): Promise<Buffer> {
+  const parsed = parseStorageUri(uri)
+  if (!parsed) {
+    throw new Error(`A screenshot path must be gs://bucket/object. Got ${uri}.`)
+  }
+
+  const file = getStorage(getDriftApp()).bucket(parsed.bucket).file(parsed.objectPath)
+  const [body] = await file.download()
+  return body
+}

@@ -102,3 +102,13 @@ The `GITHUB_REPO_ALLOWLIST` is a hard gate: the agent refuses to open a PR again
 ## 9. What is out of scope until after August 31
 
 Teams and invitations. Billing. Light mode. Production (non-preview) watching. More than one rules-file format. Route crawling (routes are declared in `drift.config.json`, always). Editor plugins. Any settings page beyond project name, preview URL, and repo. If a task drifts toward any of these, stop.
+
+## 10. What is out of scope permanently: the mechanical patch class
+
+Drift changes two things in a watched repo and nothing else: the text of a label, and a value that missed its token. Both are substitutions of one literal for another, planned by matching that literal character for character in the repo's own source, with the match bounded so a label counts only as a whole string literal or a whole element's text and a value counts only where it is not part of a longer one.
+
+Everything else is out of scope for the agent for good, not until a later phase. Drift does not parse the watched repo's code, restructure it, move a value into a token, decide where a value should come from, edit the token file, or touch anything whose correctness depends on what the code around it means. A finding whose fix needs any of that is reported with its evidence and waits for a person, which is a correct outcome and not a failure.
+
+Within that class, a narrower subset may go out **unprompted**, and the boundary is one named function, `isAutonomousFix` in `packages/core/src/actuation/autonomy.ts`. It is one function so that the whole of Drift's autonomy is auditable by reading one file, and so that widening it is a visible change to one place. It returns a reason either way and every caller logs it. Nothing else in the codebase may decide to open a pull request unprompted.
+
+Every pull request body ends with the line `Opened by Drift.`, and every write goes through `packages/core/src/github.ts`, which refuses any repo not on `GITHUB_REPO_ALLOWLIST` (section 8).
