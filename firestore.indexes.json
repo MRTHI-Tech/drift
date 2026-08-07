@@ -1,0 +1,103 @@
+{
+  "//": [
+    "Composite indexes for every repository query that filters and sorts at the",
+    "same time. Firestore serves equality-only queries from its automatic",
+    "single-field indexes, so the queries listed here are exactly the ones that",
+    "pair a `where` with an `orderBy`.",
+    "",
+    "Kept in the repo rather than clicked into the console so a second",
+    "environment is one deploy away from working, and so a new query that needs",
+    "an index is a visible change to this file.",
+    "",
+    "  gcloud firestore indexes composite create ... (see README)",
+    "  or: firebase deploy --only firestore:indexes"
+  ],
+  "indexes": [
+    {
+      "//": "runs.listByProject and runs.latestForProject",
+      "collectionGroup": "runs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "projectId", "order": "ASCENDING" },
+        { "fieldPath": "startedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "findings.listByProject",
+      "collectionGroup": "findings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "projectId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "findings.listOpen",
+      "collectionGroup": "findings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "projectId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "conventions.listByProject",
+      "collectionGroup": "conventions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "projectId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "archetypes.listByProject",
+      "collectionGroup": "archetypes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "projectId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "screens.listSummaries",
+      "collectionGroup": "screens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "projectId", "order": "ASCENDING" },
+        { "fieldPath": "capturedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "screens.listByRoute",
+      "collectionGroup": "screens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "projectId", "order": "ASCENDING" },
+        { "fieldPath": "route", "order": "ASCENDING" },
+        { "fieldPath": "viewport", "order": "ASCENDING" },
+        { "fieldPath": "capturedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "resolutions.listByFinding",
+      "collectionGroup": "resolutions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "projectId", "order": "ASCENDING" },
+        { "fieldPath": "findingId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "resolutions.listByProject",
+      "collectionGroup": "resolutions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "projectId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

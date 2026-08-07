@@ -64,6 +64,21 @@ default credentials on the machine (`gcloud auth application-default login`):
 pnpm seed --name "Acme" --repo "acme/web" --preview-url "https://acme-preview.a.run.app"
 ```
 
+## Firestore indexes
+
+Every repository query that filters by project and sorts at the same time needs
+a composite index. They are declared in `firestore.indexes.json` and have to
+exist before the dashboard will load a page; the worker survives without them
+because its queries are equality-only.
+
+```bash
+firebase deploy --only firestore:indexes
+```
+
+Without the Firebase CLI, `gcloud firestore indexes composite create` takes the
+same fields one index at a time. A query that pairs a new `where` with an
+`orderBy` needs a new entry in that file, in the same commit.
+
 ## Running a render
 
 The worker renders exactly the routes in the watched repo's
