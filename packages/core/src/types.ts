@@ -58,6 +58,50 @@ export type ComputedStyles = Record<string, ElementStyles>
  */
 export type ScreenText = Record<string, string>
 
+/** How a line of copy is capitalised. */
+export type CopyCase = "sentence" | "title" | "upper" | "lower" | "other"
+
+/**
+ * How a set of lines is written, counted rather than concluded from. Whether a
+ * screen breaks the product's copy convention is a judgment, and judgments
+ * belong to the model phase; this is only the evidence it reads.
+ */
+export interface CopyTally {
+  count: number
+  sentence: number
+  title: number
+  upper: number
+  lower: number
+  other: number
+  /** Lines that open with an imperative verb. */
+  imperative: number
+  /** The case more than half the lines are in, or null when none is. */
+  dominantCase: CopyCase | null
+}
+
+/** One thing the screen offers the user, and where it sits. */
+export interface InteractiveLabel {
+  selector: string
+  tag: string
+  label: string
+  /** Document position in CSS pixels, rounded. */
+  x: number
+  y: number
+}
+
+/** One step of the rendered type hierarchy. */
+export interface TypeStep {
+  /** Resolved size in CSS pixels. */
+  fontSize: number
+  fontWeight: number
+}
+
+/** Copy flags, tallied separately for what the screen offers and what it says. */
+export interface CopyFlags {
+  labels: CopyTally
+  headings: CopyTally
+}
+
 /**
  * Deterministic fingerprint of a rendered screen. Built without a model call
  * (AGENTS.md section 4). Null on a screen the signature phase has not reached.
@@ -65,6 +109,15 @@ export type ScreenText = Record<string, string>
 export interface Signature {
   route: string
   viewport: Viewport
+  /** Interactive labels with their positions, top to bottom. */
+  interactive: InteractiveLabel[]
+  /** Rendered type hierarchy as ordered size and weight pairs, top to bottom. */
+  typeHierarchy: TypeStep[]
+  /** Bands of content the screen divides into. */
+  sectionCount: number
+  /** Gaps in pixels between those bands, top to bottom. */
+  verticalRhythm: number[]
+  copy: CopyFlags
   /** Stable hash over the structural shape of the screen. */
   structureHash: string
   /** Stable hash over the resolved token values used by the screen. */
@@ -147,9 +200,14 @@ export interface Convention {
 }
 
 export interface FindingEvidence {
+  /** Stable selector of the element the value was seen on. Null when the
+   * finding is about the screen rather than one element. */
+  selector: string | null
   property: string
   observedValue: string
   expectedValue: string
+  /** Name of the token or convention the expected value comes from, or null. */
+  expectedSource: string | null
   siblingScreenIds: string[]
 }
 

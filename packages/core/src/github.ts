@@ -5,6 +5,7 @@
  */
 import { Octokit } from "@octokit/rest"
 
+import { parseTokenDefinitions, type TokenSet } from "./analysis/tokens"
 import { parseDriftConfig, DriftConfigError, type DriftConfig } from "./config"
 import type { Project } from "./types"
 
@@ -118,6 +119,31 @@ export async function fetchDriftConfig(
     }
     throw cause
   }
+}
+
+/** A watched repo's token file, read and parsed. */
+export interface TokenDefinitions {
+  /** Repo-relative path the tokens were read from. */
+  path: string
+  tokens: TokenSet
+}
+
+/**
+ * Reads the file a project's config points `tokenDefinitionsPath` at. Returns
+ * null when the config declares no path, or when the path is not there any
+ * more: a stale path costs the run its token findings, not its screens.
+ */
+export async function fetchTokenDefinitions(
+  octokit: Octokit,
+  { repo, defaultBranch }: Omit<ConfigSource, "configPath">,
+  path: string | null,
+): Promise<TokenDefinitions | null> {
+  if (!path) return null
+
+  const text = await fetchRepoFile(octokit, { repo, path, ref: defaultBranch })
+  if (text === null) return null
+
+  return { path, tokens: parseTokenDefinitions(text, path) }
 }
 
 function isNotFound(cause: unknown): boolean {

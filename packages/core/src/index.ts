@@ -1,3 +1,4 @@
+export * from "./analysis"
 export * from "./config"
 export * from "./constants"
 export * from "./dedupe"
