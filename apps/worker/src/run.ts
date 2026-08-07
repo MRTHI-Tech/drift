@@ -1,13 +1,19 @@
 /**
- * One run: load the project, read its config off GitHub, render every declared
- * target, persist what came back, and write the `runs` document. A failed
- * target is recorded and the run carries on; the run document is written even
- * when everything failed (AGENTS.md section 7).
+ * One run: load the project, read its config and its design tokens off GitHub,
+ * render every declared target, sign and diff what came back, persist it, and
+ * write the `runs` document. A failed target is recorded and the run carries
+ * on; the run document is written even when everything failed (AGENTS.md
+ * section 7). Nothing in this pipeline calls a model (AGENTS.md section 4).
  */
 import {
+  buildSignature,
+  countTokens,
   createGitHubClient,
   createRepositories,
+  diffScreenTokens,
   fetchDriftConfig,
+  fetchTokenDefinitions,
+  persistTokenFindings,
   uploadScreenshot,
   type DriftConfig,
   type Project,
@@ -15,6 +21,7 @@ import {
   type Run,
   type RunStatus,
   type RunTrigger,
+  type TokenSet,
 } from "@drift/core"
 import type { Browser } from "playwright"
 
@@ -51,8 +58,13 @@ export interface RunSummary {
   status: RunStatus
   routesChecked: number
   screenIds: string[]
+  /** Findings this run raised. A candidate an existing finding covers is not one. */
+  findingIds: string[]
   failures: TargetFailure[]
 }
+
+/** The authenticated GitHub client, without reaching past `@drift/core` for its type. */
+type GitHubClient = ReturnType<typeof createGitHubClient>
 
 export async function runProject(options: RunOptions): Promise<RunSummary> {
   const dryRun = options.dryRun ?? false
@@ -78,8 +90,10 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
   })
 
   try {
-    const config = await loadConfig(project, logger)
+    const github = createGitHubClient()
+    const config = await loadConfig(github, project, logger)
     const settings = renderSettings(project.previewUrl, config.authCookieName)
+    const tokens = await loadTokens(github, project, config, logger)
 
     const targets = filterTargets(buildTargets(config), options.routes ?? [])
     if (targets.length === 0) {
@@ -87,23 +101,25 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
     }
     logger.log("render.planned", { targets: targets.length, routes: config.routes.length })
 
-    const { screenIds, failures } = await renderAll({
+    const { screenIds, findingIds, failures } = await renderAll({
       targets,
       settings,
       project,
       runId,
       dryRun,
+      tokens,
       repositories,
       logger,
     })
 
-    const outcome = summarizeRun(targets, failures)
+    const outcome = summarizeRun(targets, failures, findingIds.length)
     const summary: RunSummary = {
       runId,
       projectId: project.id,
       status: outcome.status,
       routesChecked: outcome.routesChecked,
       screenIds,
+      findingIds,
       failures,
     }
 
@@ -112,6 +128,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
         finishedAt: new Date(),
         routesChecked: outcome.routesChecked,
         status: outcome.status,
+        findingIds,
         error: outcome.error,
       })
       await touchProject(repositories, project.id, startedAt, logger)
@@ -121,6 +138,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       status: outcome.status,
       routesChecked: outcome.routesChecked,
       screensWritten: screenIds.length,
+      findingsRaised: findingIds.length,
       failed: failures.length,
       durationMs: Date.now() - startedAt.getTime(),
     })
@@ -146,27 +164,38 @@ interface RenderAllInput {
   project: Project
   runId: string
   dryRun: boolean
+  /** The watched repo's tokens, or null when it declares none Drift could read. */
+  tokens: TokenSet | null
   repositories: Repositories
   logger: Logger
 }
 
+/** What one target left behind. */
+interface TargetResult {
+  screenId: string
+  findingIds: string[]
+}
+
 async function renderAll(
   input: RenderAllInput,
-): Promise<{ screenIds: string[]; failures: TargetFailure[] }> {
+): Promise<{ screenIds: string[]; findingIds: string[]; failures: TargetFailure[] }> {
   const browser = await launchBrowser()
   input.logger.log("render.browser_ready", { chromium: browser.version() })
 
   const screenIds: string[] = []
+  const findingIds: string[] = []
   try {
     const failures = await captureAll(
       input.targets,
       async (target) => {
-        const screenId = await renderOne(browser, target, input)
-        if (screenId) screenIds.push(screenId)
+        const result = await renderOne(browser, target, input)
+        if (!result) return
+        screenIds.push(result.screenId)
+        findingIds.push(...result.findingIds)
       },
       input.logger,
     )
-    return { screenIds, failures }
+    return { screenIds, findingIds, failures }
   } finally {
     await browser.close()
     input.logger.log("render.browser_closed")
@@ -202,12 +231,15 @@ export async function captureAll(
   return failures
 }
 
-/** Renders one target and writes its screen. Returns the new screen id. */
+/**
+ * Renders one target, signs it, diffs it against the tokens, and writes the
+ * screen and whatever findings the diff raised. Returns null on a dry run.
+ */
 async function renderOne(
   browser: Browser,
   target: RenderTarget,
   input: RenderAllInput,
-): Promise<string | null> {
+): Promise<TargetResult | null> {
   const logger = input.logger.child({ route: target.route, viewport: target.viewport })
   const startedAt = Date.now()
   logger.log("render.target_start")
@@ -215,10 +247,27 @@ async function renderOne(
   const capture = await captureTarget(browser, target, input.settings, logger)
   const extraction = capExtraction(capture.extraction)
 
+  const signature = buildSignature({
+    route: target.route,
+    viewport: target.viewport,
+    computedStyles: extraction.computedStyles,
+    text: extraction.text,
+  })
+  logger.log("sign.done", {
+    interactive: signature.interactive.length,
+    typeSteps: signature.typeHierarchy.length,
+    sections: signature.sectionCount,
+    labelCase: signature.copy.labels.dominantCase,
+  })
+
+  const candidates = input.tokens ? diffScreenTokens(extraction.computedStyles, input.tokens) : []
+  logger.log("diff.done", { candidates: candidates.length, tokensLoaded: input.tokens !== null })
+
   if (input.dryRun) {
     logger.log("persist.skipped", {
       dryRun: true,
       elements: extraction.elementCount,
+      candidates: candidates.length,
       durationMs: Date.now() - startedAt,
     })
     return null
@@ -241,8 +290,8 @@ async function renderOne(
     screenshotPath,
     computedStyles: extraction.computedStyles,
     text: extraction.text,
-    // Both are filled in by later phases; this one renders and extracts only.
-    signature: null,
+    signature,
+    // Both are filled in by later phases.
     archetypeId: null,
     embedding: null,
     capturedAt: new Date(),
@@ -255,7 +304,23 @@ async function renderOne(
     durationMs: Date.now() - startedAt,
   })
 
-  return screen.id
+  const { created, alreadyKnown } = await persistTokenFindings({
+    findings: input.repositories.findings,
+    projectId: input.project.id,
+    runId: input.runId,
+    screenId: screen.id,
+    route: target.route,
+    candidates,
+  })
+
+  logger.log("persist.findings_written", {
+    screenId: screen.id,
+    created: created.length,
+    // Candidates an open, resolved, or dismissed finding already covers.
+    alreadyKnown,
+  })
+
+  return { screenId: screen.id, findingIds: created.map((finding) => finding.id) }
 }
 
 /**
@@ -281,9 +346,10 @@ function startingRun(
 }
 
 /**
- * This phase produces no findings, so a run is clean when every target
- * rendered and an error when any did not. Partial results stay persisted
- * either way.
+ * A run is an error when any target did not render, findings when it raised
+ * one, and clean otherwise. A run whose candidates were all covered by
+ * findings that already exist is clean: it found nothing new to say. Partial
+ * results stay persisted whatever the status.
  *
  * A route counts as checked only when every viewport of it rendered: half a
  * route is not a route a later phase can compare.
@@ -291,13 +357,17 @@ function startingRun(
 export function summarizeRun(
   targets: RenderTarget[],
   failures: TargetFailure[],
+  findingsRaised = 0,
 ): { status: RunStatus; routesChecked: number; error: string | null } {
   const failedRoutes = new Set(failures.map((failure) => failure.target.route))
   const routes = new Set(targets.map((target) => target.route))
   const checked = [...routes].filter((route) => !failedRoutes.has(route))
 
+  const status: RunStatus =
+    failures.length > 0 ? "error" : findingsRaised > 0 ? "findings" : "clean"
+
   return {
-    status: failures.length === 0 ? "clean" : "error",
+    status,
     routesChecked: checked.length,
     error: failures.length === 0 ? null : describeFailures(targets.length, failures),
   }
@@ -316,22 +386,76 @@ function truncate(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`
 }
 
-async function loadConfig(project: Project, logger: Logger): Promise<DriftConfig> {
+async function loadConfig(
+  github: GitHubClient,
+  project: Project,
+  logger: Logger,
+): Promise<DriftConfig> {
   logger.log("config.fetching", {
     repo: project.repo,
     path: project.configPath,
     ref: project.defaultBranch,
   })
 
-  const config = await fetchDriftConfig(createGitHubClient(), project)
+  const config = await fetchDriftConfig(github, project)
 
   logger.log("config.loaded", {
     routes: config.routes.length,
     viewports: config.viewports,
     authCookie: config.authCookieName !== null,
     seedData: config.seedData,
+    tokenDefinitions: config.tokenDefinitionsPath,
   })
   return config
+}
+
+/**
+ * The watched repo's design tokens, from the path its config declares. A path
+ * that is missing or unreadable costs the run its token findings and nothing
+ * else: the screens are still worth rendering and signing, and a loud line in
+ * the log is how the person fixes the path.
+ */
+async function loadTokens(
+  github: GitHubClient,
+  project: Project,
+  config: DriftConfig,
+  logger: Logger,
+): Promise<TokenSet | null> {
+  if (!config.tokenDefinitionsPath) {
+    logger.log("tokens.not_declared")
+    return null
+  }
+
+  try {
+    const definitions = await fetchTokenDefinitions(github, project, config.tokenDefinitionsPath)
+    if (!definitions) {
+      logger.error("tokens.missing", {
+        path: config.tokenDefinitionsPath,
+        ref: project.defaultBranch,
+      })
+      return null
+    }
+
+    const total = countTokens(definitions.tokens)
+    logger.log("tokens.loaded", {
+      path: definitions.path,
+      tokens: total,
+      colors: definitions.tokens.color.length,
+      spacing: definitions.tokens.spacing.length,
+      fontSizes: definitions.tokens.fontSize.length,
+    })
+    // A file Drift could read but found nothing in usually means the tokens
+    // are built somewhere else, so say it rather than diffing against nothing.
+    if (total === 0) logger.error("tokens.empty", { path: definitions.path })
+
+    return definitions.tokens
+  } catch (error) {
+    logger.error("tokens.unreadable", {
+      path: config.tokenDefinitionsPath,
+      message: errorMessage(error),
+    })
+    return null
+  }
 }
 
 /** Keeps the project's `lastRunAt` fresh. Never worth failing a run over. */

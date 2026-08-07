@@ -13,7 +13,7 @@ anything; where it conflicts with a convenient default, it wins.
 | ------------------ | ----------------------------------------------------------- |
 | `apps/dashboard`   | Next.js App Router dashboard, shadcn/ui on the preset theme |
 | `apps/worker`      | Node CLI that renders watched screens with Playwright       |
-| `packages/core`    | Shared types, Firestore schema constants, signature logic   |
+| `packages/core`    | Shared types, Firestore schema, token diffing, signatures   |
 | `packages/agent`   | Genkit instance and flows, the only path to the Gemini API  |
 
 Everything is TypeScript in strict mode. Package manager is pnpm; the version
@@ -40,6 +40,9 @@ cp .env.example .env.local
 `.env.local` is gitignored. The canonical variable list lives in `AGENTS.md`
 section 8. The worker reads it directly: `pnpm worker` loads `.env.local` from
 the repo root if it is there.
+
+Where each value comes from, step by step, is in
+[docs/credentials.md](docs/credentials.md).
 
 ## Scripts
 
@@ -73,15 +76,46 @@ pnpm worker -- run --project <projectId>
 
 It needs `GOOGLE_CLOUD_PROJECT`, `STORAGE_BUCKET`, `GITHUB_TOKEN`, application
 default credentials, and, for a project whose config sets `authCookieName`,
-`PREVIEW_AUTH_COOKIE_VALUE`. Add `--dry-run` to render and extract without
+`PREVIEW_AUTH_COOKIE_VALUE`. Add `--dry-run` to render, sign, and diff without
 writing anything, or `--route /pricing` to limit the run to one route.
 
 A failed route is recorded and the run carries on. The run document is written
 even when every route fails, with `status: error` and the reason.
 
+## Token diffing and signatures
+
+Every screen is signed and diffed as it is captured. Neither step calls a
+model, and neither may (`AGENTS.md` section 4).
+
+The **signature** is built from the computed styles and the extracted text: the
+interactive labels with their positions, the rendered type hierarchy as ordered
+size and weight pairs, the count of content bands and the gaps between them,
+and copy flags for case and imperative mood. It is stored on the `screens`
+document.
+
+The **token diff** reads the file the config points `tokenDefinitionsPath` at,
+either a `tokens.json` or a `theme.ts` exporting colours, a spacing scale, and
+a type scale. The `theme.ts` is read as source, never imported: Drift does not
+run a watched repo's code. Every resolved colour, size, weight, spacing, and
+radius on the screen is compared against those scales, and anything off them
+becomes a `findings` document of type `token` carrying the element, the
+property, the observed value, and the nearest token.
+
+Findings go through the dedupe gate: one finding per project, route, property,
+and observed value, whatever the status of the finding that already holds that
+key. A second run over an unchanged screen therefore raises nothing, and a
+finding that has been dismissed stays dismissed.
+
+A project whose config declares no `tokenDefinitionsPath`, or whose path is
+stale, still renders and still signs. The run logs `tokens.not_declared`,
+`tokens.missing`, or `tokens.unreadable` and skips the diff.
+
 ## Where things go
 
 - Shared types: `packages/core/src/types.ts`, the single source of truth.
+- Deterministic analysis: `packages/core/src/analysis/`. Token parsing, colour
+  and length comparison, the token diff, signature construction, and the copy
+  heuristics. Nothing in there may call a model.
 - Firestore repositories: `packages/core/src/repositories/`, one per collection.
   They return typed objects, never raw snapshots.
 - Watched-project config schema: `packages/core/src/config.ts`. The file shape
@@ -96,9 +130,10 @@ even when every route fails, with `status: error` and the reason.
 
 ## Status
 
-Phase 3, the render worker. The worker loads a project, reads its
-`drift.config.json` off GitHub, renders every declared route at every declared
-viewport with motion disabled, walks the resolved computed styles and visible
-text, uploads a full-page screenshot to Cloud Storage, and writes the `screens`
-and `runs` documents. No signatures, no token diffing, no model calls, no PRs
-yet. The dashboard still renders a placeholder page.
+Phase 4, the deterministic analysis layer. The worker loads a project, reads
+its `drift.config.json` and its token file off GitHub, renders every declared
+route at every declared viewport with motion disabled, walks the resolved
+computed styles and visible text, signs each screen, diffs it against the
+tokens, uploads a full-page screenshot to Cloud Storage, and writes the
+`screens`, `findings`, and `runs` documents. No model calls, no archetypes, no
+conventions, no PRs yet. The dashboard still renders a placeholder page.

@@ -22,7 +22,9 @@ Options:
   --help           Print this message and exit.
 
 The pipeline is render -> extract -> sign -> diff -> judge -> persist. This
-phase covers render, extract, and persisting screens and the run.
+phase covers everything except judge: screens are signed, their computed
+styles are diffed against the token file the config points at, and off-token
+values are written as findings of type token. No model is called.
 
 Needs GOOGLE_CLOUD_PROJECT, STORAGE_BUCKET, GITHUB_TOKEN, Google application
 default credentials, and PREVIEW_AUTH_COOKIE_VALUE for projects whose config

@@ -73,8 +73,24 @@ describe("captureAll", () => {
 describe("summarizeRun", () => {
   const targets = buildTargets({ routes: ["/a", "/b"], viewports: ["mobile", "desktop"] })
 
-  it("is clean when every target rendered", () => {
+  it("is clean when every target rendered and nothing was found", () => {
     expect(summarizeRun(targets, [])).toEqual({ status: "clean", routesChecked: 2, error: null })
+  })
+
+  it("carries findings when the run raised one", () => {
+    expect(summarizeRun(targets, [], 3)).toMatchObject({ status: "findings", routesChecked: 2 })
+  })
+
+  it("stays clean when every candidate was already a known finding", () => {
+    expect(summarizeRun(targets, [], 0).status).toBe("clean")
+  })
+
+  it("is an error even when it also raised findings", () => {
+    const failures: TargetFailure[] = [
+      { target: { route: "/b", viewport: "desktop" }, message: "HTTP 500" },
+    ]
+
+    expect(summarizeRun(targets, failures, 2).status).toBe("error")
   })
 
   it("is an error when a target failed, and counts only whole routes", () => {
