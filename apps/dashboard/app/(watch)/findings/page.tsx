@@ -1,0 +1,86 @@
+/**
+ * Findings: what is waiting, and what has been decided.
+ *
+ * Waiting first, because a finding is an observation somebody has to answer.
+ * The settled list stays visible rather than disappearing: findings are never
+ * deleted (AGENTS.md section 2), and a decision that cannot be looked up later
+ * is a decision nobody can check.
+ */
+
+import type { Metadata } from "next"
+
+import { FindingLine } from "@/components/findings/finding-line"
+import { PageHeader } from "@/components/page-header"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { loadFindings } from "@/lib/data/findings"
+import { loadWorkspace } from "@/lib/data/workspace"
+import { count } from "@/lib/format"
+
+export const metadata: Metadata = { title: "Findings" }
+
+export const dynamic = "force-dynamic"
+
+export default async function FindingsPage() {
+  const workspace = await loadWorkspace()
+  if (!workspace) return null
+
+  const { open, settled } = await loadFindings(
+    workspace.current,
+    workspace.repositories
+  )
+
+  return (
+    <div className="flex flex-col">
+      <PageHeader
+        title="Findings"
+        description="Each one is a value Drift read off a rendered screen, with the screens it was compared against. Every one of them is a choice, not a verdict."
+      />
+
+      <Tabs defaultValue="open">
+        <div className="border-b border-border px-6 py-3">
+          <TabsList>
+            <TabsTrigger value="open">Waiting ({open.length})</TabsTrigger>
+            <TabsTrigger value="settled">
+              Decided ({settled.length})
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="open">
+          {open.length === 0 ? (
+            <p className="px-6 py-6 text-xs leading-relaxed text-muted-foreground">
+              Nothing is waiting. Every finding raised against{" "}
+              {workspace.current.name} has been answered.
+            </p>
+          ) : (
+            <ul>
+              {open.map((view) => (
+                <FindingLine key={view.finding.id} view={view} />
+              ))}
+            </ul>
+          )}
+        </TabsContent>
+
+        <TabsContent value="settled">
+          {settled.length === 0 ? (
+            <p className="px-6 py-6 text-xs leading-relaxed text-muted-foreground">
+              Nothing has been decided yet.
+            </p>
+          ) : (
+            <>
+              <p className="border-b border-border px-6 py-3 text-xs text-muted-foreground">
+                {count(settled.length, "decision")} recorded, oldest at the
+                bottom.
+              </p>
+              <ul>
+                {settled.map((view) => (
+                  <FindingLine key={view.finding.id} view={view} />
+                ))}
+              </ul>
+            </>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}

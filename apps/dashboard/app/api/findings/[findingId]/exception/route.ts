@@ -9,6 +9,9 @@ import { handleResolution, type FindingParams } from "@/lib/resolutions"
 // firebase-admin and Octokit both need Node, not the edge runtime.
 export const runtime = "nodejs"
 
-export async function POST(request: Request, context: FindingParams): Promise<Response> {
+export async function POST(
+  request: Request,
+  context: FindingParams
+): Promise<Response> {
   return handleResolution(request, context, "exception")
 }

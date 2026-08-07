@@ -8,15 +8,11 @@
  * `resolutions` document, one status change, one convention update where the
  * action implies one, one pull request where the action implies one.
  *
- * There is no UI yet, on purpose. This phase gives the dashboard the writes; a
- * later one gives it the pages.
- *
- * NOT YET AUTHENTICATED. AGENTS.md section 1 requires a session on every route
- * except `/login`, and Firebase Auth is not wired up yet. These handlers write
- * to Firestore and open pull requests, so they must not be reachable from a
- * deployed origin until that session check is in front of them. The
- * `GITHUB_REPO_ALLOWLIST` gate still holds regardless: nothing here can open a
- * pull request against a repo that is not on it.
+ * Every one of these routes requires a session (AGENTS.md section 1). They
+ * write to Firestore and open pull requests against somebody's repository, so
+ * the check is the first thing each handler does, before the body is read. The
+ * `GITHUB_REPO_ALLOWLIST` gate holds underneath it regardless: nothing here can
+ * open a pull request against a repo that is not on it.
  */
 
 import {
@@ -26,6 +22,8 @@ import {
   type ResolutionAction,
   type ResolveFindingResult,
 } from "@drift/core"
+
+import { requireApiSession } from "@/lib/session"
 
 /** The dynamic segment every resolution route carries. */
 export interface FindingParams {
@@ -47,8 +45,11 @@ interface ResolutionBody {
 export async function handleResolution(
   request: Request,
   context: FindingParams,
-  action: ResolutionAction,
+  action: ResolutionAction
 ): Promise<Response> {
+  const gate = await requireApiSession()
+  if (gate.response) return gate.response
+
   const { findingId } = await context.params
   const body = await readBody(request)
 
@@ -82,6 +83,15 @@ function present(result: ResolveFindingResult) {
     status: result.status,
     resolutionId: result.resolution?.id ?? null,
     conventionChange: result.conventionChange,
+    // What the nav footer should now read. Sent back so the page that made the
+    // decision can say what it moved, rather than only re-rendering the number.
+    driftScore: result.driftScore
+      ? {
+          score: result.driftScore.score,
+          openFindings: result.driftScore.openFindings,
+          screensChecked: result.driftScore.screensChecked,
+        }
+      : null,
     pullRequest: result.pullRequest?.opened
       ? {
           number: result.pullRequest.number,

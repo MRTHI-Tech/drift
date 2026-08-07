@@ -217,6 +217,39 @@ leaves the process, against `GITHUB_REPO_ALLOWLIST` (`AGENTS.md` section 8). An
 unset variable means no repo is writable rather than every repo. A project whose
 repo is not on it still renders, signs, diffs, and judges; it opens nothing.
 
+## The dashboard
+
+`pnpm dev` serves it on http://localhost:3000. It reads `.env.local` from the
+repo root, the same file the worker reads, and it needs Google application
+default credentials on the machine like everything else that touches Firestore.
+
+Sign-in is Firebase Auth with the Google provider and nothing else. The browser
+exchanges its ID token once for an httpOnly session cookie, and every page and
+every route handler verifies that cookie on the server. `proxy.ts` also redirects
+anyone without one, but that is an optimistic check and not the gate.
+
+| Page | What is on it |
+| --- | --- |
+| Runs | Every run newest first, the latest one open, its findings inline, and the pull requests it opened unprompted |
+| Findings | What is waiting and what has been decided. One finding opens the comparison view |
+| Conventions | Grouped by archetype, each row opening onto the screens it was counted across, plus the `drift.rules.md` card |
+
+The comparison view is the centre of it: the divergent screen's real capture
+beside the real captures of the screens its value was counted against, the cited
+element boxed on each from that screen's own extraction record, and the three
+ways to answer it wired to the resolution routes.
+
+Screenshots are served through `/api/screens/[screenId]/image`, which checks the
+session and then streams the object at the screen's `screenshotPath`. The bucket
+stays private and the browser never sees a signed URL.
+
+**The drift score** is open findings over screens checked, as a percentage, 0 to
+100, stored on the project. It is recomputed when a finding is resolved and when
+the dashboard loads, and it is written only when it moved. The sparkline beside
+it is real history: a finding records when it was raised and when it was
+resolved, so what was open at the end of any past run is reconstructed rather
+than remembered.
+
 ## Where things go
 
 - Shared types: `packages/core/src/types.ts`, the single source of truth.
@@ -236,6 +269,10 @@ repo is not on it still renders, signs, diffs, and judges; it opens nothing.
   Nothing in there calls a model either: the two things a pull request needs to
   say are the evidence line the judgment phase already wrote and the
   substitution the planner already measured.
+- Dashboard data loading: `apps/dashboard/lib/data/`. Server-only modules that
+  assemble what a page needs out of the typed repositories, so no page component
+  ever queries.
+- The drift score: `packages/core/src/score.ts`. Counted, never modelled.
 - UI components: add them with `npx shadcn@latest add <component>` inside
   `apps/dashboard`. They land in `components/ui/` and belong to the repo. Do
   not hand-write what the registry provides, and do not change the preset's
@@ -260,7 +297,6 @@ A finding can be resolved four ways, from the dashboard's API routes or from the
 worker's temporary CLI command, and a resolution opens the patch it implies,
 updates the convention it implies, and regenerates `drift.rules.md`.
 
-The dashboard has the writes and no pages: the resolution routes exist, the UI
-does not, and **the routes have no session check in front of them yet**
-(`AGENTS.md` section 1 requires one on every route except `/login`). Do not
-expose the dashboard on a deployed origin until Firebase Auth is wired up.
+The dashboard is the whole loop: sign in, read the last run, review a finding
+against its siblings, resolve it, watch the score move, and read the rules file
+Drift would write now. Every route except `/login` requires a session.
