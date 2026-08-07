@@ -265,6 +265,32 @@ it is real history: a finding records when it was raised and when it was
 resolved, so what was open at the end of any past run is reconstructed rather
 than remembered.
 
+## Deploying
+
+Everything runs on Google Cloud (`AGENTS.md` section 1). The dashboard is a
+Cloud Run service and the worker is a Cloud Run job, built from
+`apps/dashboard/Dockerfile` and `apps/worker/Dockerfile` through the two
+`cloudbuild.*.yaml` files at the root. Every command, in order, from an empty
+project, is in [deploy.md](deploy.md).
+
+Deployed, a run starts one of three ways and the `runs` document records which.
+
+| Trigger | What starts it |
+| --- | --- |
+| `scheduled` | A Cloud Scheduler entry per watched project, on that project's interval |
+| `deploy` | The watched repo publishes to a Pub/Sub topic when its preview redeploys; the push subscription reaches the dashboard, which starts the job |
+| `manual` | A person, at a terminal or with `gcloud run jobs execute` |
+
+All three end at one execution of the same job, with the project and the
+trigger on its command line. The dashboard's push endpoint is the only route
+not behind the session cookie, because a push subscription cannot carry one; it
+verifies the identity token Google signs every push with instead, against its
+own URL and against the one service account allowed to push.
+
+Both runtimes write one JSON object per line, so every field is queryable in
+Cloud Logging and every line a run writes carries its `runId` and `projectId`.
+The query that shows one run end to end is in `deploy.md` section 13.
+
 ## Where things go
 
 - Shared types: `packages/core/src/types.ts`, the single source of truth.
