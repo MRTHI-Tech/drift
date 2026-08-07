@@ -71,6 +71,7 @@ export function FindingLine({
       <Button
         variant="outline"
         size="sm"
+        nativeButton={false}
         render={<Link href={`/findings/${finding.id}`} />}
       >
         {open ? action : "Open"}

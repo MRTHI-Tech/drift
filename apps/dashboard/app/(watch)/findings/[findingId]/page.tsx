@@ -59,6 +59,7 @@ export default async function FindingPage({
           variant="ghost"
           size="sm"
           className="w-fit"
+          nativeButton={false}
           render={<Link href="/findings" />}
         >
           <RiArrowLeftLine data-icon="inline-start" />

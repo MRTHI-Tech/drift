@@ -31,6 +31,7 @@ export function NavLinks({ openFindings }: { openFindings: number }) {
             key={href}
             variant={active ? "secondary" : "ghost"}
             className="justify-start"
+            nativeButton={false}
             render={<Link href={href} />}
             aria-current={active ? "page" : undefined}
           >
