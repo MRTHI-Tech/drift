@@ -64,6 +64,11 @@ default credentials on the machine (`gcloud auth application-default login`):
 pnpm seed --name "Acme" --repo "acme/web" --preview-url "https://acme-preview.a.run.app"
 ```
 
+The dashboard adds projects too, and both go through `createProject` in
+`packages/core/src/projects/`, so a project added in a browser and one added at
+a terminal are the same document with the same defaults and the same uniqueness
+rule. See [Adding a project](#adding-a-project).
+
 ## Firestore indexes
 
 Every repository query that filters by project and sorts at the same time needs
@@ -211,9 +216,15 @@ that line is `isAutonomousFix`, and every finding a run raises is logged under
 
 **Branches** in the watched repo: `drift/fix-<findingId>` carries one patch and
 is what the pull request proposes; `drift/rules` carries `drift.rules.md`;
+`drift/config` carries a `drift.config.json` proposed for a repo that has none;
 `drift/evidence` carries the before and after images the pull request bodies
 embed and is never proposed or merged, so a pull request contains the patch and
 only the patch.
+
+`drift.rules.md` and `drift.config.json` are the two files Drift authors rather
+than patches, and `AGENTS.md` section 10b is what bounds them: Drift composes
+them whole, never parses one it did not write, and never overwrites a
+`drift.config.json` that is already there.
 
 **The rules file** is `drift.rules.md` at the root of the watched repo, written
 in imperative plain language for a coding agent: what to label the action on
@@ -248,6 +259,47 @@ anyone without one, but that is an optimistic check and not the gate.
 | Runs | Every run newest first, the latest one open, its findings inline, and the pull requests it opened unprompted |
 | Findings | What is waiting and what has been decided. One finding opens the comparison view |
 | Conventions | Grouped by archetype, each row opening onto the screens it was counted across, plus the `drift.rules.md` card |
+
+### Adding a project
+
+Two fields, because two things cannot be derived: which repo, and where it is
+deployed. The name is filled in from the repo and can be edited. Everything else
+is read out of the repo, and routes especially are never asked for here:
+`drift.config.json` is the only declaration of what gets rendered, and a second
+place to state it would be a second truth.
+
+Four things are checked while the form is still open, because every way a run
+fails traces back to one of them.
+
+| Check | What it asks | On failure |
+| --- | --- | --- |
+| Repo | Can this token read it, and what is its default branch | Blocks |
+| Config | Is there a `drift.config.json`, and does the strict schema accept it | Blocks |
+| Preview | Does the preview answer for the first route the config declares | Warns |
+| Tokens | Does the file at `tokenDefinitionsPath` parse | Warns |
+
+The split is the one the worker already makes: a repo it cannot read and a
+config it cannot parse leave nothing to render, and a dead preview or an
+unreadable token file cost a run some of what it would have found and none of
+what it would have rendered. The default branch comes from GitHub rather than
+from the form, so a repo on `master` is not a project that fails every config
+check.
+
+Two more things are stated without being checks. A repo that is not on
+`GITHUB_REPO_ALLOWLIST` is watched, scored, and never sent a pull request, which
+is said rather than discovered. A config that sets `authCookieName` needs
+`PREVIEW_AUTH_COOKIE_VALUE`, which today is one variable for every project.
+
+A repo with no config gets both ways out: the file Drift would write, to copy,
+and, when the allowlist permits it, a pull request onto `drift/config` that adds
+it. That file is a setup file under `AGENTS.md` section 10b, not a patch, and it
+is only ever proposed where there is no config already. An existing one is never
+overwritten, whatever it says.
+
+Saving starts the project's first run, with `trigger: manual`, so a new project
+has something on its pages rather than looking broken. Locally there is no
+worker job to start, so the dialog says so and gives the command to run instead:
+the project is created either way.
 
 The comparison view is the centre of it: the divergent screen's real capture
 beside the real captures of the screens its value was counted against, the cited
@@ -310,6 +362,9 @@ The query that shows one run end to end is in `deploy.md` section 13.
   Nothing in there calls a model either: the two things a pull request needs to
   say are the evidence line the judgment phase already wrote and the
   substitution the planner already measured.
+- Watched projects: `packages/core/src/projects/`. What a person types and what
+  it has to become, the four preflight checks, the one function that writes the
+  document, the config Drift proposes to a repo that has none, and the first run.
 - Dashboard data loading: `apps/dashboard/lib/data/`. Server-only modules that
   assemble what a page needs out of the typed repositories, so no page component
   ever queries.

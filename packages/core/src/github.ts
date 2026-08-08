@@ -130,6 +130,46 @@ export async function fetchRepoFile(
   return Buffer.from(data.content, "base64").toString("utf8")
 }
 
+/** What Drift knows about a repo before it has read anything out of it. */
+export interface RepoMetadata {
+  /** `owner/name` as GitHub spells it, which may differ in case from the input. */
+  repo: string
+  defaultBranch: string
+  private: boolean
+  /** True when the token can push. A read-only token watches but never proposes. */
+  writable: boolean
+}
+
+/**
+ * Reads a repo's own metadata. Its purpose is to answer, before a project is
+ * created, whether this token can see this repo at all, and to take the default
+ * branch from GitHub rather than from somebody typing `master`.
+ *
+ * Returns null when GitHub answers 404, which for a private repo the token
+ * cannot see is the same answer as for a repo that does not exist. That
+ * ambiguity is GitHub's and cannot be resolved from here, so the caller states
+ * both possibilities rather than guessing one.
+ */
+export async function fetchRepoMetadata(
+  octokit: Octokit,
+  repo: string,
+): Promise<RepoMetadata | null> {
+  const target = parseRepo(repo)
+
+  try {
+    const response = await octokit.rest.repos.get({ ...target })
+    return {
+      repo: response.data.full_name,
+      defaultBranch: response.data.default_branch,
+      private: response.data.private,
+      writable: response.data.permissions?.push ?? false,
+    }
+  } catch (cause) {
+    if (isNotFound(cause)) return null
+    throw new GitHubError(`Could not read ${repo}. ${describe(cause)}`, { cause })
+  }
+}
+
 /** The parts of a project a config fetch needs. */
 export type ConfigSource = Pick<Project, "repo" | "configPath" | "defaultBranch">
 

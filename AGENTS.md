@@ -103,12 +103,36 @@ The `GITHUB_REPO_ALLOWLIST` is a hard gate: the agent refuses to open a PR again
 
 Teams and invitations. Billing. Light mode. Production (non-preview) watching. More than one rules-file format. Route crawling (routes are declared in `drift.config.json`, always). Editor plugins. Any settings page beyond project name, preview URL, and repo. If a task drifts toward any of these, stop.
 
-## 10. What is out of scope permanently: the mechanical patch class
+## 10. What Drift may write into a watched repo
 
-Drift changes two things in a watched repo and nothing else: the text of a label, and a value that missed its token. Both are substitutions of one literal for another, planned by matching that literal character for character in the repo's own source, with the match bounded so a label counts only as a whole string literal or a whole element's text and a value counts only where it is not part of a longer one.
+Two categories, and nothing outside them. The first governs fixes and is permanently bounded. The second governs the files Drift itself authors, and exists because the rules file was already one of them.
+
+### 10a. The mechanical patch class: fixes to a finding
+
+Drift changes two things in a watched repo's own source and nothing else: the text of a label, and a value that missed its token. Both are substitutions of one literal for another, planned by matching that literal character for character in the repo's own source, with the match bounded so a label counts only as a whole string literal or a whole element's text and a value counts only where it is not part of a longer one.
 
 Everything else is out of scope for the agent for good, not until a later phase. Drift does not parse the watched repo's code, restructure it, move a value into a token, decide where a value should come from, edit the token file, or touch anything whose correctness depends on what the code around it means. A finding whose fix needs any of that is reported with its evidence and waits for a person, which is a correct outcome and not a failure.
 
-Within that class, a narrower subset may go out **unprompted**, and the boundary is one named function, `isAutonomousFix` in `packages/core/src/actuation/autonomy.ts`. It is one function so that the whole of Drift's autonomy is auditable by reading one file, and so that widening it is a visible change to one place. It returns a reason either way and every caller logs it. Nothing else in the codebase may decide to open a pull request unprompted.
+### 10b. Files Drift authors: the setup class
+
+Drift may also create and maintain files that it defines the schema of and that carry no meaning to the watched application at runtime. There are exactly two, and adding a third requires amending this section in the same commit:
+
+- `drift.rules.md`, at the repo root, regenerated on any convention change.
+- `drift.config.json`, at the project's `configPath`, and **only when the repo does not have one already**.
+
+This class is separated from 10a because the risk it carries is a different risk. A patch under 10a edits source somebody else wrote, so its bound is that Drift must never need to understand that source. A file under 10b is authored entirely by Drift against a schema in this repository, so nothing about it depends on reading the watched repo's code at all.
+
+The limits are strict and hold with no exception:
+
+- Drift only ever creates or replaces a 10b file wholesale. It never merges into one, never edits one line of one, and never parses one it did not write.
+- **A 10b file that already exists is a file a person owns.** An existing `drift.config.json` is never overwritten, whatever it says. A config that is present and invalid is reported to the person with the validation error and waits for them, exactly like a finding that is not mechanically fixable.
+- A 10b file is never written into the default branch directly. `drift.rules.md` goes to `drift/rules` and `drift.config.json` goes to `drift/config`. Each arrives as a pull request the first time, because a new file in somebody's repository is a change they should see and accept; after that the branch is that file's home and regeneration commits onto it.
+- No 10b file may contain anything a model wrote. Both are composed from what the deterministic phases already measured.
+
+### 10c. What holds across both
+
+Within 10a, a narrower subset may go out **unprompted**, and the boundary is one named function, `isAutonomousFix` in `packages/core/src/actuation/autonomy.ts`. It is one function so that the whole of Drift's autonomy is auditable by reading one file, and so that widening it is a visible change to one place. It returns a reason either way and every caller logs it. Nothing else in the codebase may decide to open a pull request unprompted.
+
+Nothing in 10b is ever unprompted, and `isAutonomousFix` is not consulted for it. Every 10b write is the direct result of a person doing something: regenerating the rules file follows a resolution somebody chose, and proposing a config follows somebody adding a project and asking for it. An unprompted write is a decision the agent made, and the agent makes no decisions about files it authors.
 
 Every pull request body ends with the line `Opened by Drift.`, and every write goes through `packages/core/src/github.ts`, which refuses any repo not on `GITHUB_REPO_ALLOWLIST` (section 8).

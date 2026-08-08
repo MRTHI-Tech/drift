@@ -38,7 +38,7 @@ export function ProjectSwitcher({
 }: {
   projects: readonly SwitchableProject[]
   current: Project
-  /** The server action that records the choice. */
+  /** The server action that records the choice. Also used after one is added. */
   onChoose: (projectId: string) => Promise<void>
 }) {
   const [, startTransition] = React.useTransition()

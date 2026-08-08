@@ -1,11 +1,26 @@
+"use client"
+
 /**
- * What the shell shows when Firestore holds no project. Not an error: nothing
- * has been seeded yet, and the way to seed one is a command.
+ * What the shell shows when Firestore holds no project. Not an error: nothing is
+ * being watched yet, and the way to fix that is right here.
+ *
+ * The command is still offered underneath, because `pnpm seed` and this dialog
+ * call the same `createProject` and a terminal is sometimes the faster way in.
  */
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { RiAddLine } from "@remixicon/react"
 
-export function NoProjects({ email }: { email: string | null }) {
+import { AddProjectDialog } from "@/components/projects/add-project-dialog"
+import { Button } from "@/components/ui/button"
+
+export function NoProjects({
+  email,
+  onCreated,
+}: {
+  email: string | null
+  /** Records the new project as the current one. The layout's server action. */
+  onCreated: (projectId: string) => Promise<void>
+}) {
   return (
     <div className="flex min-h-svh items-center justify-center p-6">
       <div className="flex w-full max-w-lg flex-col gap-4">
@@ -17,21 +32,29 @@ export function NoProjects({ email }: { email: string | null }) {
           </p>
         </div>
 
-        <Alert>
-          <AlertTitle>Seed a project first</AlertTitle>
-          <AlertDescription>
-            <p>
-              A project needs a name, a repo and a preview URL before anything
-              can be rendered against it. From the repo root:
-            </p>
-            <pre className="overflow-x-auto font-mono text-xs text-foreground">
-              {`pnpm seed --name "Acme" --repo "acme/web" \\\n  --preview-url "https://acme-preview.a.run.app"`}
-            </pre>
-            <p>
-              Then run the worker once, and this page will have runs to show.
-            </p>
-          </AlertDescription>
-        </Alert>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Drift needs a repo and the URL its preview is deployed at. It reads the
+          routes, the viewports and the token file out of the repo itself.
+        </p>
+
+        <div>
+          <AddProjectDialog
+            onCreated={onCreated}
+            trigger={
+              <Button size="sm">
+                <RiAddLine />
+                Add project
+              </Button>
+            }
+          />
+        </div>
+
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Or from a terminal, which goes through exactly the same path:
+        </p>
+        <pre className="overflow-x-auto bg-secondary p-3 font-mono text-xs text-foreground">
+          {`pnpm seed --name "Acme" --repo "acme/web" \\\n  --preview-url "https://acme-preview.a.run.app"`}
+        </pre>
       </div>
     </div>
   )

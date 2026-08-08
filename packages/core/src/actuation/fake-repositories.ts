@@ -75,6 +75,17 @@ export function fakeRepositories(seed: FakeSeed = {}): FakeRepositories {
       async update(id, values) {
         return patch(stored.projects, id, values)
       },
+      async create(input: Omit<Project, "id">) {
+        const project = { ...input, id: `project-${stored.projects.length + 1}` } as Project
+        stored.projects.push(project)
+        return project
+      },
+      async list() {
+        return [...stored.projects]
+      },
+      async findByRepo(repo: string) {
+        return stored.projects.find((project) => project.repo === repo) ?? null
+      },
     } as Repositories["projects"],
 
     screens: {

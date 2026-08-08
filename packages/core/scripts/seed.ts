@@ -6,18 +6,30 @@
  *
  * Needs GOOGLE_CLOUD_PROJECT and Google application default credentials.
  * Writes nothing else: no runs, no screens, no findings.
+ *
+ * The work is `createProject` in `src/projects/`, which is also what the
+ * dashboard's add dialog calls. Nothing about a project differs by where it was
+ * created from, and this file exists to turn flags into that call and errors
+ * into an exit code.
+ *
+ * What it does not do is check the repo first. The dashboard inspects before it
+ * creates, because somebody is sitting there and can fix a typo; a terminal
+ * command that reaches GitHub before writing would be slower and would fail on
+ * a machine with no network for a document that does not need one.
  */
 import { parseArgs } from "node:util"
 
 import { DEFAULT_BRANCH, DEFAULT_CONFIG_PATH } from "../src/constants"
-import { createProjectRepository } from "../src/repositories/projects"
-import { getDriftFirestore } from "../src/firestore"
-import type { Project } from "../src/types"
+import {
+  createProject,
+  ProjectExistsError,
+  ProjectInputError,
+  workerCommand,
+} from "../src/projects"
+import { createRepositories } from "../src/repositories"
 
 const USAGE = `Usage: seed --name <name> --repo <owner/name> --preview-url <url>
              [--default-branch <branch>] [--config-path <path>]`
-
-const REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
@@ -30,34 +42,16 @@ async function main(): Promise<void> {
     },
   })
 
-  const name = required(values.name, "--name")
-  const repo = required(values.repo, "--repo")
-  const previewUrl = required(values["preview-url"], "--preview-url")
-
-  if (!REPO_PATTERN.test(repo)) {
-    fail(`--repo must be owner/name. Got ${repo}.`)
-  }
-  assertHttpUrl(previewUrl)
-
-  const projects = createProjectRepository(getDriftFirestore())
-
-  const existing = await projects.findByRepo(repo)
-  if (existing) {
-    fail(`A project already watches ${repo}: ${existing.id}. Nothing was written.`)
-  }
-
-  const input: Omit<Project, "id"> = {
-    name,
-    repo,
-    previewUrl,
-    defaultBranch: values["default-branch"] ?? DEFAULT_BRANCH,
-    configPath: values["config-path"] ?? DEFAULT_CONFIG_PATH,
-    createdAt: new Date(),
-    driftScore: 0,
-    lastRunAt: null,
-  }
-
-  const project = await projects.create(input)
+  const project = await createProject({
+    input: {
+      name: values.name ?? "",
+      repo: values.repo ?? "",
+      previewUrl: values["preview-url"] ?? "",
+      defaultBranch: values["default-branch"],
+      configPath: values["config-path"],
+    },
+    repositories: createRepositories(),
+  })
 
   console.log({
     message: "Created project",
@@ -66,26 +60,8 @@ async function main(): Promise<void> {
     name: project.name,
     repo: project.repo,
     previewUrl: project.previewUrl,
+    next: workerCommand(project.id),
   })
-}
-
-function required(value: string | undefined, flag: string): string {
-  if (!value || value.trim().length === 0) {
-    fail(`${flag} is required.\n${USAGE}`)
-  }
-  return value.trim()
-}
-
-function assertHttpUrl(value: string): void {
-  let url: URL
-  try {
-    url = new URL(value)
-  } catch {
-    fail(`--preview-url must be a URL. Got ${value}.`)
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    fail(`--preview-url must be http or https. Got ${url.protocol}.`)
-  }
 }
 
 function fail(message: string): never {
@@ -94,5 +70,11 @@ function fail(message: string): never {
 }
 
 await main().catch((error: unknown) => {
+  if (error instanceof ProjectInputError) {
+    fail(`${error.issues.map((issue) => issue.message).join("\n")}\n\n${USAGE}`)
+  }
+  if (error instanceof ProjectExistsError) {
+    fail(`${error.message} Nothing was written.`)
+  }
   fail(error instanceof Error ? error.message : String(error))
 })

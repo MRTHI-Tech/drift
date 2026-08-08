@@ -7,7 +7,11 @@
  * check that a cookie has to survive.
  */
 
+import { RiAddLine } from "@remixicon/react"
+
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { AddProjectDialog } from "@/components/projects/add-project-dialog"
 import { AccountMenu } from "@/components/nav/account-menu"
 import { DriftScoreFooter } from "@/components/nav/drift-score-footer"
 import { NavLinks } from "@/components/nav/nav-links"
@@ -27,7 +31,7 @@ export default async function WatchLayout({
   const workspace = await loadWorkspace()
 
   if (!workspace) {
-    return <NoProjects email={session.email} />
+    return <NoProjects email={session.email} onCreated={chooseProject} />
   }
 
   const trend = await loadScoreTrend(workspace.current, workspace.repositories)
@@ -39,6 +43,20 @@ export default async function WatchLayout({
           projects={workspace.projects}
           current={workspace.current}
           onChoose={chooseProject}
+        />
+
+        <AddProjectDialog
+          onCreated={chooseProject}
+          trigger={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start px-2 text-muted-foreground"
+            >
+              <RiAddLine />
+              Add project
+            </Button>
+          }
         />
 
         <Separator />
