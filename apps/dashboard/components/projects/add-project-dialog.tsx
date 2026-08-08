@@ -25,6 +25,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
+  RiAddLine,
   RiCheckLine,
   RiCloseLine,
   RiErrorWarningLine,
@@ -65,13 +66,21 @@ const CHECK_LABELS: Record<string, string> = {
   tokens: "Tokens",
 }
 
+/**
+ * Where the trigger sits, which is all the two callers differ by. A prop rather
+ * than a passed-in element: an element built in a server component and handed
+ * across the boundary as `render` hydrates with the wrong `data-slot`, because
+ * the server renders the element's own and the client renders the trigger's.
+ */
+export type AddProjectTone = "nav" | "primary"
+
 export function AddProjectDialog({
   onCreated,
-  trigger,
+  tone = "primary",
 }: {
   /** Records the new project as the current one. The layout's server action. */
   onCreated: (projectId: string) => Promise<void>
-  trigger: React.ReactNode
+  tone?: AddProjectTone
 }) {
   const router = useRouter()
 
@@ -244,7 +253,22 @@ export function AddProjectDialog({
         if (!next) reset()
       }}
     >
-      <DialogTrigger render={trigger as React.ReactElement} />
+      <DialogTrigger
+        render={
+          tone === "nav" ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start px-2 text-muted-foreground"
+            />
+          ) : (
+            <Button size="sm" />
+          )
+        }
+      >
+        <RiAddLine />
+        Add project
+      </DialogTrigger>
 
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
         {created ? (

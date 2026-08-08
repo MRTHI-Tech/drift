@@ -301,6 +301,24 @@ has something on its pages rather than looking broken. Locally there is no
 worker job to start, so the dialog says so and gives the command to run instead:
 the project is created either way.
 
+### Removing a project
+
+The switcher removes one too. This is one of the two deletions in Drift
+(`AGENTS.md` section 2, the other being a convention), and the only one that
+reaches more than a single document, so it states exactly what is about to be
+lost, counted, and asks for the project's name to be typed.
+
+It deletes the project's runs, screens, archetypes, conventions, findings and
+resolutions, and every screenshot under its prefix in the bucket. Resolutions
+are append-only everywhere else, and go here because every query in Drift is
+scoped by `projectId`: once the project is gone nothing could read them again,
+so keeping them would preserve no decision and cost storage forever.
+
+The order is images, then the collections, then the project document last. The
+project is the index into everything else, so a cascade that fails part way
+leaves a project that can simply be removed again rather than documents nothing
+can reach.
+
 The comparison view is the centre of it: the divergent screen's real capture
 beside the real captures of the screens its value was counted against, the cited
 element boxed on each from that screen's own extraction record, and the three

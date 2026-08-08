@@ -8,10 +8,7 @@
  * call the same `createProject` and a terminal is sometimes the faster way in.
  */
 
-import { RiAddLine } from "@remixicon/react"
-
 import { AddProjectDialog } from "@/components/projects/add-project-dialog"
-import { Button } from "@/components/ui/button"
 
 export function NoProjects({
   email,
@@ -38,15 +35,7 @@ export function NoProjects({
         </p>
 
         <div>
-          <AddProjectDialog
-            onCreated={onCreated}
-            trigger={
-              <Button size="sm">
-                <RiAddLine />
-                Add project
-              </Button>
-            }
-          />
+          <AddProjectDialog onCreated={onCreated} />
         </div>
 
         <p className="text-xs leading-relaxed text-muted-foreground">

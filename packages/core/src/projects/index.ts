@@ -23,6 +23,21 @@ export {
   type CreateProjectInput,
 } from "./create"
 
+export {
+  confirmationProblem,
+  countProjectContents,
+  deleteProject,
+  firestoreEraser,
+  OWNED_COLLECTIONS,
+  ProjectConfirmationError,
+  ProjectNotFoundError,
+  type DeleteProjectInput,
+  type DeleteProjectResult,
+  type OwnedCollection,
+  type ProjectContents,
+  type ProjectEraser,
+} from "./delete"
+
 export { startFirstRun, workerCommand, type FirstRunResult, type StartFirstRunInput } from "./first-run"
 
 export {

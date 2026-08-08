@@ -50,6 +50,34 @@ export function parseStorageUri(uri: string): { bucket: string; objectPath: stri
 }
 
 /**
+ * The prefix every screenshot of one project sits under. Deterministic from the
+ * project id alone, which is what makes a project's images findable without
+ * reading a single `screens` document.
+ */
+export function projectScreenshotPrefix(projectId: string): string {
+  return `screens/${projectId}/`
+}
+
+/**
+ * Deletes every screenshot a project ever captured, by prefix rather than by
+ * walking its screens. A screen document that was written and then lost would
+ * otherwise leave its image behind forever, and the prefix does not depend on
+ * any document surviving to be read.
+ *
+ * Returns the number of objects removed.
+ */
+export async function deleteProjectScreenshots(projectId: string): Promise<number> {
+  const bucket = getScreenshotBucket()
+  const prefix = projectScreenshotPrefix(projectId)
+
+  const [files] = await bucket.getFiles({ prefix })
+  if (files.length === 0) return 0
+
+  await bucket.deleteFiles({ prefix, force: true })
+  return files.length
+}
+
+/**
  * Reads one stored screenshot back. Used when a pull request needs the image of
  * a screen it is about; the bucket in the path is honoured rather than assumed,
  * so a screen captured before the bucket changed still reads.

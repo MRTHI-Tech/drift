@@ -15,6 +15,7 @@ import { RiCheckLine, RiExpandUpDownLine } from "@remixicon/react"
 import type { Project } from "@drift/core/types"
 
 import { count } from "@/lib/format"
+import { RemoveProjectDialog } from "@/components/projects/remove-project-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -44,80 +45,105 @@ export function ProjectSwitcher({
 }) {
   const [, startTransition] = React.useTransition()
 
+  // Held here, so the dialog is a sibling of the menu rather than a child of
+  // it. Choosing the item closes the menu, and a dialog inside the thing that
+  // just closed is a dialog that unmounts as it opens.
+  const [removing, setRemoving] = React.useState(false)
+
   function choose(projectId: string) {
     if (projectId === current.id) return
     startTransition(() => onChoose(projectId))
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            className="h-auto w-full justify-start px-2 py-2"
-          />
-        }
-      >
-        <ProjectMark name={current.name} />
-        <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-          <span className="w-full truncate text-sm font-medium">
-            {current.name}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              className="h-auto w-full justify-start px-2 py-2"
+            />
+          }
+        >
+          <ProjectMark name={current.name} />
+          <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+            <span className="w-full truncate text-sm font-medium">
+              {current.name}
+            </span>
+            <span className="w-full truncate font-mono text-xs text-muted-foreground">
+              {current.repo}
+            </span>
           </span>
-          <span className="w-full truncate font-mono text-xs text-muted-foreground">
-            {current.repo}
-          </span>
-        </span>
-        <RiExpandUpDownLine className="text-muted-foreground" />
-      </DropdownMenuTrigger>
+          <RiExpandUpDownLine className="text-muted-foreground" />
+        </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="start" className="w-72">
-        {/*
-         * The label and the items are one group because the label is a
-         * `GroupLabel`, which names a group and throws without one. A menu that
-         * throws on open is a menu that never opens.
-         */}
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Watched projects</DropdownMenuLabel>
+        <DropdownMenuContent align="start" className="w-72">
+          {/*
+           * The label and the items are one group because the label is a
+           * `GroupLabel`, which names a group and throws without one. A menu that
+           * throws on open is a menu that never opens.
+           */}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Watched projects</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+
+            {projects.map(({ project, openFindings }) => (
+              <DropdownMenuItem
+                key={project.id}
+                onClick={() => choose(project.id)}
+                className="items-start gap-2"
+                data-current={project.id === current.id ? "" : undefined}
+              >
+                <ProjectMark name={project.name} />
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate">{project.name}</span>
+                  <span className="truncate font-mono text-xs text-muted-foreground">
+                    {project.repo}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {openFindings > 0 ? (
+                    <Badge title={count(openFindings, "unresolved finding")}>
+                      {openFindings}
+                    </Badge>
+                  ) : null}
+                  <span
+                    className="font-mono text-xs text-muted-foreground"
+                    title="Drift score"
+                  >
+                    {project.driftScore}
+                  </span>
+                  {project.id === current.id ? (
+                    <span title="The project you are looking at">
+                      <RiCheckLine className="size-4 text-muted-foreground" />
+                    </span>
+                  ) : null}
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+
           <DropdownMenuSeparator />
 
-          {projects.map(({ project, openFindings }) => (
-            <DropdownMenuItem
-              key={project.id}
-              onClick={() => choose(project.id)}
-              className="items-start gap-2"
-              data-current={project.id === current.id ? "" : undefined}
-            >
-              <ProjectMark name={project.name} />
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate">{project.name}</span>
-                <span className="truncate font-mono text-xs text-muted-foreground">
-                  {project.repo}
-                </span>
-              </span>
-              <span className="flex shrink-0 items-center gap-1.5">
-                {openFindings > 0 ? (
-                  <Badge title={count(openFindings, "unresolved finding")}>
-                    {openFindings}
-                  </Badge>
-                ) : null}
-                <span
-                  className="font-mono text-xs text-muted-foreground"
-                  title="Drift score"
-                >
-                  {project.driftScore}
-                </span>
-                {project.id === current.id ? (
-                  <span title="The project you are looking at">
-                    <RiCheckLine className="size-4 text-muted-foreground" />
-                  </span>
-                ) : null}
-              </span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => setRemoving(true)}
+          >
+            Remove {current.name}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {removing ? (
+        <RemoveProjectDialog
+          projectId={current.id}
+          name={current.name}
+          repo={current.repo}
+          onOpenChange={setRemoving}
+        />
+      ) : null}
+    </>
   )
 }
 

@@ -56,6 +56,31 @@ export interface ProposedConfig {
   path: string
 }
 
+/** What a project owns, counted, as the remove dialog states it first. */
+export interface ProjectContents {
+  runs: number
+  screens: number
+  archetypes: number
+  conventions: number
+  findings: number
+  resolutions: number
+  screenshots: number
+}
+
+export interface ProjectSummaryResponse {
+  projectId: string
+  name: string
+  repo: string
+  contents: ProjectContents
+}
+
+export interface DeletedProject {
+  projectId: string
+  name: string
+  repo: string
+  deleted: ProjectContents
+}
+
 /** The error message a failed response carries, or null. */
 export function responseMessage(body: unknown): string | null {
   if (typeof body !== "object" || body === null) return null

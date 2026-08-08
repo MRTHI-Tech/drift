@@ -7,9 +7,6 @@
  * check that a cookie has to survive.
  */
 
-import { RiAddLine } from "@remixicon/react"
-
-import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { AddProjectDialog } from "@/components/projects/add-project-dialog"
 import { AccountMenu } from "@/components/nav/account-menu"
@@ -45,19 +42,7 @@ export default async function WatchLayout({
           onChoose={chooseProject}
         />
 
-        <AddProjectDialog
-          onCreated={chooseProject}
-          trigger={
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start px-2 text-muted-foreground"
-            >
-              <RiAddLine />
-              Add project
-            </Button>
-          }
-        />
+        <AddProjectDialog onCreated={chooseProject} tone="nav" />
 
         <Separator />
 
