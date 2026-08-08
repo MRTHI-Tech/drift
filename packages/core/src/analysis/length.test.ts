@@ -23,7 +23,9 @@ describe("parseLengthPx", () => {
 describe("sameLength", () => {
   it("ignores sub-pixel jitter and nothing more", () => {
     expect(sameLength(12, 12.005)).toBe(true)
-    expect(sameLength(12, 12.5)).toBe(false)
+    // A scaled type ramp reporting 13.3333px for a 13.5px token.
+    expect(sameLength(13.5, 13.3333)).toBe(true)
+    expect(sameLength(12, 12.6)).toBe(false)
   })
 })
 

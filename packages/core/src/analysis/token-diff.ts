@@ -6,9 +6,9 @@
  */
 
 import { STYLE_PROPERTIES, type StyleProperty } from "../constants"
-import type { ComputedStyles } from "../types"
+import type { ComputedStyles, ElementStyles } from "../types"
 import { colorDistance, isFullyTransparent, parseColor, sameColor } from "./color"
-import { parseLengthPx, sameLength, splitShorthand } from "./length"
+import { parseLengthPx, ROOT_FONT_SIZE_PX, sameLength, splitShorthand } from "./length"
 import { parseFontWeight, type Token, type TokenGroup, type TokenSet } from "./tokens"
 
 /** Which scale each recorded property is answerable to. */
@@ -34,6 +34,55 @@ export const UNDIFFED_PROPERTIES = STYLE_PROPERTIES.filter(
 
 /** Properties whose value is a list of decisions rather than one. */
 const SHORTHAND_PROPERTIES: readonly StyleProperty[] = ["margin", "padding", "border-radius"]
+
+/**
+ * Properties that inherit, so every element reports one whether or not anybody
+ * set it. A paragraph inside a container reports the container's colour as its
+ * own, and the deepest child of a page reports the root's font size. Diffing
+ * those as though each element had chosen them turns one unstyled root into a
+ * finding on every screen it appears on, cited at the element least likely to
+ * have authored it.
+ *
+ * So an inherited property is only answerable to the scale where it changed:
+ * on the element that moved it away from what it would otherwise have been.
+ * Everything below that element is reporting the same decision, and the run
+ * already states it once (AGENTS.md section 2).
+ */
+const INHERITED_PROPERTIES: readonly StyleProperty[] = ["color", "font-size", "font-weight"]
+
+/**
+ * What each inherited property is before anything sets it. The root of a
+ * capture has no recorded parent to have differed from, so this is the only
+ * thing that separates "the product chose black" from "nobody chose anything
+ * and the browser filled it in".
+ */
+const INITIAL_VALUES: Partial<Record<StyleProperty, string>> = {
+  color: "rgb(0, 0, 0)",
+  "font-size": `${ROOT_FONT_SIZE_PX}px`,
+  "font-weight": "400",
+}
+
+/**
+ * How far an off-scale value may sit from a token before naming that token
+ * says nothing.
+ *
+ * Nearest is always true and not always useful. A 52px radius on a scale whose
+ * largest step is 26px does have a nearest token, but calling it the nearest
+ * invites snapping a value to something twice its size, which is a redesign
+ * rather than a correction. Past these distances the finding still stands, and
+ * says the value is on no scale rather than naming one.
+ *
+ * Colours are OKLab distance, where `colorDistance` puts a different colour
+ * entirely past 0.3. Lengths are pixels, at roughly one step of a scale.
+ * Weights are steps of 100.
+ */
+export const MAX_NAMEABLE_DISTANCE: Record<TokenGroup, number> = {
+  color: 0.3,
+  fontSize: 4,
+  fontWeight: 200,
+  spacing: 8,
+  radius: 8,
+}
 
 /**
  * How loud a token finding is, by what a person notices. A wrong colour reads
@@ -97,6 +146,12 @@ export function diffScreenTokens(
       const declaredValue = element.styles[property]
       if (!declaredValue) continue
 
+      // An inherited value this element did not set belongs to whichever
+      // ancestor did, and is answered for there.
+      if (!wasSetHere(computedStyles, selector, property, group, declaredValue)) {
+        continue
+      }
+
       const parts = SHORTHAND_PROPERTIES.includes(property)
         ? splitShorthand(declaredValue)
         : [declaredValue.trim()]
@@ -123,6 +178,76 @@ export function diffScreenTokens(
   }
 
   return candidates
+}
+
+/**
+ * Whether this element is where an inherited value was actually set. A property
+ * that does not inherit is always this element's own decision.
+ */
+function wasSetHere(
+  computedStyles: ComputedStyles,
+  selector: string,
+  property: StyleProperty,
+  group: TokenGroup,
+  declaredValue: string,
+): boolean {
+  if (!INHERITED_PROPERTIES.includes(property)) return true
+
+  const ancestor = nearestRecordedAncestor(computedStyles, selector)
+  if (ancestor) {
+    const inherited = ancestor.styles[property]
+    return !inherited || !sameValue(group, declaredValue, inherited)
+  }
+
+  // Nothing above it was recorded, so this is the top of the capture and there
+  // is no parent value it could have differed from. All that can be said is
+  // whether anything moved it off the value it would have had anyway.
+  const initial = INITIAL_VALUES[property]
+  return initial === undefined || !sameValue(group, declaredValue, initial)
+}
+
+/**
+ * The closest ancestor the extraction kept. Not necessarily the DOM parent: the
+ * extractor drops elements to stay inside its size budget, and inheritance
+ * passes straight through whatever it dropped, so the nearest ancestor that was
+ * kept still carries the value this element would have inherited.
+ */
+function nearestRecordedAncestor(
+  computedStyles: ComputedStyles,
+  selector: string,
+): ElementStyles | null {
+  let path = selector
+
+  for (;;) {
+    const cut = path.lastIndexOf(" > ")
+    if (cut < 0) return null
+
+    path = path.slice(0, cut)
+    const ancestor = computedStyles[path]
+    if (ancestor) return ancestor
+  }
+}
+
+/** Whether two spellings of one property mean the same thing. */
+function sameValue(group: TokenGroup, left: string, right: string): boolean {
+  if (group === "color") {
+    const a = parseColor(left)
+    const b = parseColor(right)
+    return a !== null && b !== null && sameColor(a, b)
+  }
+
+  const read = group === "fontWeight" ? parseFontWeight : parseLengthPx
+  const a = read(left)
+  const b = read(right)
+  if (a === null || b === null) return left.trim() === right.trim()
+
+  return group === "fontWeight" ? a === b : sameLength(a, b)
+}
+
+/** The nearest token, or null when it is too far away to mean anything. */
+function nameable(nearest: NearestToken | null, group: TokenGroup): NearestToken | null {
+  if (!nearest) return null
+  return nearest.distance <= MAX_NAMEABLE_DISTANCE[group] ? nearest : null
 }
 
 /**
@@ -160,7 +285,7 @@ function compareColor(
     }
   }
 
-  return nearest
+  return nameable(nearest, "color")
 }
 
 function compareNumber(
@@ -173,6 +298,13 @@ function compareNumber(
   if (observed === null) return "unreadable"
   // Zero is always on any scale: it is the absence of the thing.
   if (group !== "fontWeight" && observed === 0) return "conforms"
+
+  // A negative length is an overlap: something pulled deliberately over the
+  // thing before it. A spacing scale of positive steps has no answer to it, and
+  // reporting that -20px missed a 4px step describes nothing anybody did.
+  if (group !== "fontWeight" && observed < 0 && !hasNegative(scale, read)) {
+    return "unreadable"
+  }
 
   let nearest: NearestToken | null = null
 
@@ -189,7 +321,18 @@ function compareNumber(
     }
   }
 
-  return nearest
+  return nameable(nearest, group)
+}
+
+/** Whether a scale has any step below zero to answer a negative value with. */
+function hasNegative(
+  scale: readonly Token[],
+  read: (value: string) => number | null,
+): boolean {
+  return scale.some((token) => {
+    const value = read(token.value)
+    return value !== null && value < 0
+  })
 }
 
 /**

@@ -60,6 +60,15 @@ export const PLANTED_COLOR = "rgb(124, 58, 237)"
 /** The second: a padding that is not on the spacing scale. */
 export const PLANTED_PADDING = "13px"
 
+/**
+ * One element's resolved styles: everything conforming to the tokens above
+ * except what is overridden. Exported so a test can build a small screen of
+ * its own without restating nine properties to change one.
+ */
+export function styleValues(overrides: Partial<StyleValues> = {}): StyleValues {
+  return styles(overrides)
+}
+
 function styles(overrides: Partial<StyleValues> = {}): StyleValues {
   return {
     color: "rgb(15, 23, 42)",

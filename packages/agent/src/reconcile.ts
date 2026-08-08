@@ -19,9 +19,11 @@
  * A style value is verified against `computedStyles`, which is where a resolved
  * style value lives. A copy value is verified against `text`, which is the same
  * extraction keyed by the same selectors and is where an element's visible
- * words live; in both cases the cited element must appear in `computedStyles`
- * or there is no record of it at all. Both records are written by the
- * deterministic extraction phase and neither is reachable by a model.
+ * words live. A derived value is verified by working it out from `text` again
+ * and comparing, because it is a reading of the record rather than an entry in
+ * it. In all three the cited element must appear in `computedStyles` or there
+ * is no record of it at all. Both records are written by the deterministic
+ * extraction phase and neither is reachable by a model.
  *
  * Because a candidate's value is copied out of the record rather than
  * described, an honest model always passes. The gate only ever fires on a
@@ -33,7 +35,7 @@ import { valueAppearsIn, type ComputedStyles, type ScreenText } from "@drift/cor
 
 import { MAX_SENTENCE_LENGTH } from "./constants"
 import type { DivergenceCandidate } from "./divergence"
-import { profileProperty, resolveLabel, type ProfileKind } from "./profile"
+import { deriveValue, profileProperty, resolveLabel, type ProfileKind } from "./profile"
 
 /** The part of a screen's extraction the gate reads. */
 export interface ExtractionSlice {
@@ -163,6 +165,13 @@ export function valueIsRecorded(
     const definition = profileProperty(property)
     if (!definition || definition.kind !== "style" || !definition.styleProperty) return false
     return valueAppearsIn(extraction.computedStyles, selector, definition.styleProperty, value)
+  }
+
+  // A derived value is verified by deriving it again from the same record. The
+  // model cannot reach the function or the record, so a cited value that does
+  // not match is a value the model made up, exactly as with the other two.
+  if (kind === "derived") {
+    return deriveValue(property, extraction.text, selector) === value.trim()
   }
 
   return resolveLabel(extraction.text, selector) === value.trim()

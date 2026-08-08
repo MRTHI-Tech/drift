@@ -167,6 +167,56 @@ export function isImperative(text: string): boolean {
   return first !== undefined && IMPERATIVE_VERBS.has(first.toLowerCase())
 }
 
+/**
+ * Labels that would fit on any screen in any product. A closed list on
+ * purpose, and a short one: "is this word specific enough" is a judgment, and
+ * a judgment belongs to the model phase, not to a guess in this one. Anything
+ * not on this list is treated as naming its own action.
+ *
+ * Matched on the whole label, lowercased, with punctuation dropped, so "Next"
+ * is generic and "Next step in your rhythm" is not.
+ */
+const GENERIC_LABELS = new Set([
+  "back",
+  "cancel",
+  "close",
+  "confirm",
+  "continue",
+  "done",
+  "finish",
+  "get started",
+  "go",
+  "got it",
+  "learn more",
+  "next",
+  "no",
+  "ok",
+  "okay",
+  "save",
+  "skip",
+  "start",
+  "submit",
+  "yes",
+])
+
+/**
+ * Whether a label names the action it performs or could sit on any screen.
+ *
+ * This is what lets a convention be stated over a quality rather than over a
+ * string. A product whose buttons say "Build our rhythm" and "Add to my prayer
+ * list" has a convention, but no two of those labels are ever the same words,
+ * so counting the words finds nothing. Counting the kind finds it.
+ *
+ * Deterministic and list-based, so the same label always classifies the same
+ * way and the reconciliation gate can re-derive it from the record.
+ */
+export function labelVoice(label: string): "generic" | "specific" {
+  const words = (label.match(WORD_PATTERN) ?? []).map((word) => word.toLowerCase())
+  if (words.length === 0) return "generic"
+
+  return GENERIC_LABELS.has(words.join(" ")) ? "generic" : "specific"
+}
+
 export function emptyTally(): CopyTally {
   return {
     count: 0,

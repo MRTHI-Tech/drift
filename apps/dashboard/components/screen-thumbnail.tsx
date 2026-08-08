@@ -15,10 +15,22 @@
  * CSS pixels is that width times the image's aspect ratio, and an element's
  * recorded box becomes a percentage of the rendered image without anything
  * needing to be stored about how tall the page was.
+ *
+ * A thumbnail is a crop. A mobile capture is a tall page shown through a frame
+ * a few hundred pixels high, so most of the screen is out of sight, and a
+ * person cannot check evidence they cannot see. Every thumbnail therefore opens
+ * into a drawer holding the whole capture at close to the width it was rendered
+ * at, with the same box drawn from the same record. The frame and the drawer
+ * share one `Capture`, so what the drawer shows is the thumbnail's own image
+ * rather than a second reading of it.
  */
 
 import * as React from "react"
-import { RiImageLine } from "@remixicon/react"
+import {
+  RiCloseLine,
+  RiExpandDiagonalLine,
+  RiImageLine,
+} from "@remixicon/react"
 // The constants and types subpaths, not the package root: this component runs
 // in the browser, and the root re-exports firebase-admin and Octokit.
 import { VIEWPORT_SIZES } from "@drift/core/constants"
@@ -26,6 +38,16 @@ import type { BoundingBox, Viewport } from "@drift/core/types"
 
 import { cn } from "@/lib/utils"
 import { screenLabel } from "@/lib/format"
+import { Button } from "@/components/ui/button"
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer"
 
 export interface ScreenThumbnailProps {
   screenId: string
@@ -55,6 +77,113 @@ export function ScreenThumbnail({
   revealHighlight = false,
   className,
 }: ScreenThumbnailProps) {
+  const label = screenLabel(route, viewport)
+
+  return (
+    <figure className={cn("flex min-w-0 flex-col gap-2", className)}>
+      <div className="relative">
+        <Capture
+          screenId={screenId}
+          route={route}
+          viewport={viewport}
+          highlight={highlight}
+          reveal={revealHighlight}
+          className={cn(
+            "rounded-lg bg-muted ring-1 ring-border",
+            size === "tall" ? "h-96" : "h-40"
+          )}
+        />
+
+        {marker ? <div className="absolute top-2 right-2">{marker}</div> : null}
+
+        <Drawer>
+          <DrawerTrigger
+            render={
+              <Button
+                variant="secondary"
+                size="icon-sm"
+                className="absolute right-2 bottom-2"
+              />
+            }
+          >
+            <RiExpandDiagonalLine />
+            <span className="sr-only">Open the whole capture of {label}</span>
+          </DrawerTrigger>
+
+          <DrawerContent className="h-dvh">
+            <DrawerHeader>
+              <DrawerTitle className="font-mono">{label}</DrawerTitle>
+              <DrawerDescription>
+                {highlight
+                  ? "The whole capture, with the cited element boxed where its own extraction record puts it."
+                  : "The whole capture, as Drift rendered it."}
+              </DrawerDescription>
+            </DrawerHeader>
+
+            <DrawerClose
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute top-3 right-3"
+                />
+              }
+            >
+              <RiCloseLine />
+              <span className="sr-only">Close</span>
+            </DrawerClose>
+
+            <div className="min-h-0 flex-1 px-4 pb-4">
+              <Capture
+                screenId={screenId}
+                route={route}
+                viewport={viewport}
+                highlight={highlight}
+                reveal={highlight !== null}
+                className={cn(
+                  "mx-auto h-full rounded-lg bg-muted ring-1 ring-border",
+                  // Close to the width it was rendered at, so the screen reads
+                  // the way it does on a phone rather than stretched across a
+                  // desktop drawer.
+                  viewport === "mobile" && "max-w-sm"
+                )}
+              />
+            </div>
+          </DrawerContent>
+        </Drawer>
+      </div>
+
+      <figcaption className="truncate font-mono text-xs text-muted-foreground">
+        {caption ?? label}
+      </figcaption>
+    </figure>
+  )
+}
+
+interface CaptureProps {
+  screenId: string
+  route: string
+  viewport: Viewport
+  highlight: BoundingBox | null
+  /** Scroll the highlighted element into view once the image has loaded. */
+  reveal: boolean
+  /** The scrolling frame: its height, and any clamp on its width. */
+  className?: string
+}
+
+/**
+ * The image and the box on it, inside a frame that scrolls. Used at two sizes,
+ * so it owns the load state rather than the thumbnail: the drawer's copy loads
+ * on its own and reports its own failure.
+ */
+function Capture({
+  screenId,
+  route,
+  viewport,
+  highlight,
+  reveal,
+  className,
+}: CaptureProps) {
   const [ratio, setRatio] = React.useState<number | null>(null)
   const [failed, setFailed] = React.useState(false)
   const frame = React.useRef<HTMLDivElement>(null)
@@ -64,7 +193,7 @@ export function ScreenThumbnail({
     ratio === null ? null : VIEWPORT_SIZES[viewport].width * ratio
 
   React.useEffect(() => {
-    if (!revealHighlight || !highlight || pageHeight === null) return
+    if (!reveal || !highlight || pageHeight === null) return
     const target = marked.current
     const container = frame.current
     if (!target || !container) return
@@ -75,7 +204,7 @@ export function ScreenThumbnail({
       0,
       target.offsetTop - container.clientHeight / 2 + target.clientHeight / 2
     )
-  }, [revealHighlight, highlight, pageHeight])
+  }, [reveal, highlight, pageHeight])
 
   const box =
     highlight && pageHeight !== null
@@ -88,57 +217,41 @@ export function ScreenThumbnail({
       : null
 
   return (
-    <figure className={cn("flex min-w-0 flex-col gap-2", className)}>
-      <div className="relative">
-        <div
-          ref={frame}
-          className={cn(
-            "relative overflow-y-auto rounded-lg bg-muted ring-1 ring-border",
-            size === "tall" ? "h-96" : "h-40"
-          )}
-        >
-          {failed ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
-              <RiImageLine />
-              <span className="text-xs leading-relaxed">
-                The capture of {screenLabel(route, viewport)} could not be
-                loaded from Cloud Storage.
-              </span>
-            </div>
-          ) : (
-            <div className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element -- the bytes
-                  come from Cloud Storage through a session-checked route, which
-                  the image optimiser cannot reach. */}
-              <img
-                src={`/api/screens/${encodeURIComponent(screenId)}/image`}
-                alt={`${screenLabel(route, viewport)}, as it was captured`}
-                className="block w-full"
-                onLoad={(event) => {
-                  const image = event.currentTarget
-                  setRatio(image.naturalHeight / image.naturalWidth)
-                }}
-                onError={() => setFailed(true)}
-              />
-
-              {box ? (
-                <div
-                  ref={marked}
-                  aria-hidden
-                  className="pointer-events-none absolute rounded-sm bg-primary/10 ring-2 ring-primary"
-                  style={box}
-                />
-              ) : null}
-            </div>
-          )}
+    <div ref={frame} className={cn("relative overflow-y-auto", className)}>
+      {failed ? (
+        <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
+          <RiImageLine />
+          <span className="text-xs leading-relaxed">
+            The capture of {screenLabel(route, viewport)} could not be loaded
+            from Cloud Storage.
+          </span>
         </div>
+      ) : (
+        <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element -- the bytes
+              come from Cloud Storage through a session-checked route, which
+              the image optimiser cannot reach. */}
+          <img
+            src={`/api/screens/${encodeURIComponent(screenId)}/image`}
+            alt={`${screenLabel(route, viewport)}, as it was captured`}
+            className="block w-full"
+            onLoad={(event) => {
+              const image = event.currentTarget
+              setRatio(image.naturalHeight / image.naturalWidth)
+            }}
+            onError={() => setFailed(true)}
+          />
 
-        {marker ? <div className="absolute top-2 right-2">{marker}</div> : null}
-      </div>
-
-      <figcaption className="truncate font-mono text-xs text-muted-foreground">
-        {caption ?? screenLabel(route, viewport)}
-      </figcaption>
-    </figure>
+          {box ? (
+            <div
+              ref={marked}
+              aria-hidden
+              className="pointer-events-none absolute rounded-sm bg-primary/10 ring-2 ring-primary"
+              style={box}
+            />
+          ) : null}
+        </div>
+      )}
+    </div>
   )
 }

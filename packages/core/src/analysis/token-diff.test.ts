@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import { dedupeKey } from "../dedupe"
-import type { ComputedStyles } from "../types"
+import type { ComputedStyles, StyleValues } from "../types"
 import {
   PLANTED_COLOR,
   PLANTED_PADDING,
   SCREEN_STYLES,
+  styleValues,
   THEME_SOURCE,
   TOKENS_JSON,
 } from "./fixtures"
@@ -144,6 +145,81 @@ describe("valueAppearsIn", () => {
     ).toBe(false)
     expect(valueAppearsIn(SCREEN_STYLES, "nothing-here", "color", "rgb(15, 23, 42)")).toBe(false)
     expect(valueAppearsIn(SCREEN_STYLES, "body", "font-family", "Inter")).toBe(false)
+  })
+})
+
+/**
+ * A screen of two elements, a root and one child under it, so a property that
+ * inherits can be seen arriving from above.
+ */
+function nested(
+  root: Partial<StyleValues>,
+  child: Partial<StyleValues> = {}
+): ComputedStyles {
+  const box = { x: 0, y: 0, width: 390, height: 100 }
+  return {
+    "[data-testid='root']": {
+      tag: "div",
+      box,
+      styles: styleValues(root),
+    },
+    "[data-testid='root'] > p:nth-of-type(1)": {
+      tag: "p",
+      box,
+      styles: styleValues({ ...root, ...child }),
+    },
+  }
+}
+
+describe("inherited properties", () => {
+  it("answers for a value once, where it was set", () => {
+    const candidates = diffScreenTokens(nested({ color: PLANTED_COLOR }), tokens)
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toMatchObject({
+      selector: "[data-testid='root']",
+      property: "color",
+      observedValue: PLANTED_COLOR,
+    })
+  })
+
+  it("still answers for a child that moved the value itself", () => {
+    const candidates = diffScreenTokens(
+      nested({}, { color: PLANTED_COLOR }),
+      tokens
+    )
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toMatchObject({
+      selector: "[data-testid='root'] > p:nth-of-type(1)",
+      property: "color",
+    })
+  })
+
+  it("leaves the value the browser filled in alone", () => {
+    // Nothing above the root to have differed from, and black is what colour
+    // is before anybody sets it.
+    const candidates = diffScreenTokens(nested({ color: "rgb(0, 0, 0)" }), tokens)
+
+    expect(candidates).toHaveLength(0)
+  })
+})
+
+describe("values no scale answers", () => {
+  it("says nothing about a negative length", () => {
+    // The spacing scale runs 0 to 32px, so it has no answer to an overlap.
+    expect(diffScreenTokens(nested({ margin: "-20px" }), tokens)).toHaveLength(0)
+    expect(diffScreenTokens(nested({ margin: "13px" }), tokens)).toHaveLength(1)
+  })
+
+  it("names no token for a value too far from every one of them", () => {
+    // The radius scale tops out at 16px, so 40px has a nearest and it means
+    // nothing: snapping it would be a redesign.
+    const [far] = diffScreenTokens(nested({ "border-radius": "40px" }), tokens)
+    expect(far).toMatchObject({ property: "border-radius", nearestToken: null })
+
+    const [near] = diffScreenTokens(nested({ "border-radius": "18px" }), tokens)
+    expect(near?.nearestToken).toMatchObject({ name: "radius.lg", value: "16px" })
   })
 })
 

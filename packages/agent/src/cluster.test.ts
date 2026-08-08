@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { archetypeCentroid, clusterScreens, type EmbeddedScreen } from "./cluster"
 import { cosineSimilarity, signatureText } from "./embedding"
-import { stepScreen, stepScreens } from "./fixtures"
+import { PLANTED_LABEL, stepScreen, stepScreens } from "./fixtures"
 
 /**
  * Vectors near a direction, so a cluster can be built without calling an
@@ -148,7 +148,22 @@ describe("signatureText", () => {
     const text = signatureText(stepScreen(6).signature!)
 
     expect(text).toContain("viewport: mobile")
-    expect(text).toContain('button "Next"')
+    expect(text).toContain("2 button")
     expect(text).toContain("20/700")
+  })
+
+  it("leaves the copy out, so what a screen asks is not what kind it is", () => {
+    const text = signatureText(stepScreen(6).signature!)
+
+    expect(text).not.toContain(PLANTED_LABEL)
+    expect(text).not.toContain("Back")
+  })
+
+  it("reads two steps alike when only their words differ", () => {
+    // Step 1 offers "Get started" and step 2 offers "Continue". Same screen,
+    // different question, and an archetype is not a question.
+    expect(signatureText(stepScreen(1).signature!)).toBe(
+      signatureText(stepScreen(2).signature!),
+    )
   })
 })

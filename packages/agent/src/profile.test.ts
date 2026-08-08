@@ -26,7 +26,7 @@ describe("terminalActionSelector", () => {
   it("takes the bottom-most, right-most action, not the first one", () => {
     const screen = stepScreen(2)
 
-    expect(terminalActionSelector(screen.signature!)).toBe(NEXT_SELECTOR)
+    expect(terminalActionSelector(screen.signature!, screen.computedStyles)).toBe(NEXT_SELECTOR)
   })
 
   it("takes the only action when a screen has one", () => {
@@ -38,13 +38,92 @@ describe("terminalActionSelector", () => {
       ),
     }
 
-    expect(terminalActionSelector(alone)).toBe(BACK_SELECTOR)
+    expect(terminalActionSelector(alone, screen.computedStyles)).toBe(BACK_SELECTOR)
   })
 
   it("has no anchor on a screen that offers nothing", () => {
     const screen = stepScreen(2)
 
-    expect(terminalActionSelector({ ...screen.signature!, interactive: [] })).toBeNull()
+    expect(
+      terminalActionSelector({ ...screen.signature!, interactive: [] }, screen.computedStyles),
+    ).toBeNull()
+  })
+
+  it("has no anchor on a screen offering only peers", () => {
+    // A question with three answers drawn identically. The bottom answer is
+    // not this screen's call to action, so the screen has none.
+    const screen = stepScreen(2)
+    const choices = ["one", "two", "three"]
+
+    const computedStyles = Object.fromEntries(
+      choices.map((name) => [
+        `[data-testid='${name}']`,
+        {
+          tag: "button",
+          box: { x: 16, y: 200, width: 358, height: 44 },
+          styles: screen.computedStyles[BACK_SELECTOR]!.styles,
+        },
+      ]),
+    )
+    const interactive = choices.map((name, index) => ({
+      selector: `[data-testid='${name}']`,
+      tag: "button",
+      label: name,
+      x: 16,
+      y: 200 + index * 68,
+    }))
+
+    expect(
+      terminalActionSelector({ ...screen.signature!, interactive }, computedStyles),
+    ).toBeNull()
+  })
+
+  it("takes the one action that is not a peer", () => {
+    const screen = stepScreen(2)
+    const computedStyles = {
+      ...screen.computedStyles,
+      "[data-testid='one']": {
+        tag: "button",
+        box: { x: 16, y: 200, width: 358, height: 44 },
+        styles: screen.computedStyles[BACK_SELECTOR]!.styles,
+      },
+      "[data-testid='two']": {
+        tag: "button",
+        box: { x: 16, y: 268, width: 358, height: 44 },
+        styles: screen.computedStyles[BACK_SELECTOR]!.styles,
+      },
+    }
+    const interactive = [
+      { selector: "[data-testid='one']", tag: "button", label: "one", x: 16, y: 200 },
+      { selector: "[data-testid='two']", tag: "button", label: "two", x: 16, y: 268 },
+      ...screen.signature!.interactive.filter(
+        (element) => element.selector === NEXT_SELECTOR,
+      ),
+    ]
+
+    expect(
+      terminalActionSelector({ ...screen.signature!, interactive }, computedStyles),
+    ).toBe(NEXT_SELECTOR)
+  })
+})
+
+describe("cta.voice", () => {
+  it("reads a stock label as generic and a named action as specific", () => {
+    // Step 2's action says "Continue"; step 6's says "Next".
+    expect(profileValue(profileOf(2), "cta.voice")?.value).toBe("generic")
+
+    const named = stepScreen(2)
+    named.text[NEXT_SELECTOR] = "Build our rhythm"
+    expect(
+      profileValue(
+        buildProfile({
+          signature: named.signature!,
+          computedStyles: named.computedStyles,
+          text: named.text,
+        }),
+        "cta.voice",
+      )?.value,
+    ).toBe("specific")
   })
 })
 
@@ -65,6 +144,7 @@ describe("buildProfile", () => {
   it("reads values exactly as the extraction recorded them", () => {
     expect(profileOf(2)).toEqual([
       { property: "cta.label", kind: "copy", selector: NEXT_SELECTOR, value: "Continue" },
+      { property: "cta.voice", kind: "derived", selector: NEXT_SELECTOR, value: "generic" },
       { property: "cta.size", kind: "style", selector: NEXT_SELECTOR, value: "16px" },
       { property: "cta.radius", kind: "style", selector: NEXT_SELECTOR, value: "8px" },
       {

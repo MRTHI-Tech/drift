@@ -7,8 +7,12 @@ export const CLASSIFY_ARCHETYPE_SYSTEM = `You name kinds of screens in a product
 
 You are given one screenshot and a deterministic signature of the same screen:
 its viewport, how many content bands it has, the gaps between them, its
-rendered type hierarchy as size and weight pairs, the labels of everything it
-offers the user, and how its copy is written.
+rendered type hierarchy as size and weight pairs, how many things it offers the
+user and how those are spaced and how wordy they are, and how its copy is
+written.
+
+The signature carries no copy on purpose. What a screen says is in the
+screenshot; the signature is its shape.
 
 Return a short label for the kind of screen this is. Not what this particular
 screen says, but what family it belongs to, so that every other screen of the

@@ -8,11 +8,25 @@
  * of screen. Above it a screen joins an archetype, below it the screen stays
  * unassigned and is never judged for pattern drift.
  *
- * Signatures of one flow's steps sit far above this and a different page sits
- * well below, so the exact number is not delicate. Every similarity a run
- * measures is logged under `cluster.measured`, which is how it gets tuned.
+ * Measured, not guessed. Over one real product's twelve mobile screens, the
+ * encoding in `embedding.ts` puts the median pair at 0.888 and the closest at
+ * 0.989, and the number sorts as follows:
+ *
+ *   0.95  two families of 4 and 3, five screens unassigned
+ *   0.93  two families of 4 and 5, three screens unassigned
+ *   0.88  one family of 8, and a stub screen wrongly inside it
+ *   0.85  one family of 10, which is to say no families at all
+ *
+ * 0.93 is the last value where the families are still families. Below it the
+ * clusters collapse into "every screen is the same kind of screen", which
+ * states nothing; above it a family sits exactly on the convention floor, so
+ * one screen moving costs it every convention it had.
+ *
+ * That is one project's data, so treat this as a starting point rather than a
+ * constant of nature. Every similarity a run measures is logged under
+ * `cluster.measured`, which is how it gets tuned against the next one.
  */
-export const ARCHETYPE_SIMILARITY = 0.9
+export const ARCHETYPE_SIMILARITY = 0.93
 
 /**
  * Screens a fresh cluster needs before it becomes an archetype. Set to the
@@ -28,6 +42,7 @@ export const MIN_SCREENS_PER_ARCHETYPE = 3
  */
 export const PATTERN_SEVERITY: Record<string, number> = {
   "cta.label": 3,
+  "cta.voice": 3,
   "heading.size": 2,
   "cta.size": 2,
   "heading.weight": 2,

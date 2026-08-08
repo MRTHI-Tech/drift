@@ -24,7 +24,7 @@ import { labelConvention } from "./label-convention"
 
 const ProfileValueSchema = z.object({
   property: z.string(),
-  kind: z.enum(["style", "copy"]),
+  kind: z.enum(["style", "copy", "derived"]),
   selector: z.string(),
   value: z.string(),
 })

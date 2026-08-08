@@ -11,8 +11,17 @@
  */
 export const ROOT_FONT_SIZE_PX = 16
 
-/** Lengths this close are the same length. Sub-pixel jitter is not drift. */
-export const LENGTH_EPSILON_PX = 0.01
+/**
+ * Lengths this close are the same length. Sub-pixel jitter is not drift.
+ *
+ * Half a pixel, because that is the point below which nothing is visible and
+ * below which a browser's own arithmetic moves things anyway. A layout engine
+ * that scales a type ramp reports 13.3333px for a 13.5px token, and a
+ * device-pixel-ratio boundary rounds a 12px radius to 11.5px. Neither is a
+ * decision anybody made, and reporting them as drift buries the values that
+ * are.
+ */
+export const LENGTH_EPSILON_PX = 0.5
 
 /**
  * Reads a single length in px. A bare number is read as px, which is how token

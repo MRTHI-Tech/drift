@@ -12,7 +12,8 @@
     "typecheck": "pnpm -r --sequential typecheck",
     "test": "pnpm -r --sequential test",
     "worker": "pnpm --filter @drift/worker start",
-    "seed": "pnpm --filter @drift/core exec tsx --env-file-if-exists=../../.env.local scripts/seed.ts"
+    "seed": "pnpm --filter @drift/core exec tsx --env-file-if-exists=../../.env.local scripts/seed.ts",
+    "prune-findings": "pnpm --filter @drift/core exec tsx --env-file-if-exists=../../.env.local scripts/prune-findings.ts"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

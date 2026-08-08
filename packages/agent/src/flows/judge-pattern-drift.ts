@@ -33,7 +33,7 @@ import { fill, lines, screenshotDataUri } from "./render"
 const CandidateSchema = z.object({
   conventionId: z.string(),
   property: z.string(),
-  kind: z.enum(["style", "copy"]),
+  kind: z.enum(["style", "copy", "derived"]),
   selector: z.string(),
   observedValue: z.string(),
   expectedValue: z.string(),

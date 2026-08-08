@@ -13,12 +13,27 @@
  * and a model that alters it never does.
  */
 
-import { HEADING_TAGS, type ComputedStyles, type ScreenText, type Signature, type StyleProperty } from "@drift/core"
+import {
+  HEADING_TAGS,
+  labelVoice,
+  type ComputedStyles,
+  type ScreenText,
+  type Signature,
+  type StyleProperty,
+} from "@drift/core"
 
 import { DEFAULT_PATTERN_SEVERITY, PATTERN_SEVERITY } from "./constants"
 
-/** Where a property's value is read from, and therefore where it is verified. */
-export type ProfileKind = "style" | "copy"
+/**
+ * Where a property's value is read from, and therefore where it is verified.
+ *
+ * `style` and `copy` are read straight out of the extraction record. `derived`
+ * is worked out from it by a pure function, and the gate verifies one by
+ * running that function again rather than by looking the value up: the value is
+ * still the record's, arrived at the same way every time, and still not
+ * something a model can originate (AGENTS.md section 3).
+ */
+export type ProfileKind = "style" | "copy" | "derived"
 
 /** One property a convention can be stated over. */
 export interface ProfileProperty {
@@ -48,6 +63,12 @@ const ACTION_TAGS: readonly string[] = ["button", "a"]
  */
 export const PROFILE_PROPERTIES: readonly ProfileProperty[] = [
   { property: "cta.label", kind: "copy", styleProperty: null, reads: "last action label" },
+  {
+    property: "cta.voice",
+    kind: "derived",
+    styleProperty: null,
+    reads: "call to action wording",
+  },
   { property: "cta.size", kind: "style", styleProperty: "font-size", reads: "last action type size" },
   { property: "cta.radius", kind: "style", styleProperty: "border-radius", reads: "last action corner radius" },
   { property: "heading.size", kind: "style", styleProperty: "font-size", reads: "first heading type size" },
@@ -98,7 +119,7 @@ export interface ProfileInput {
  */
 export function buildProfile(input: ProfileInput): ScreenProfile {
   const anchors = {
-    cta: terminalActionSelector(input.signature),
+    cta: terminalActionSelector(input.signature, input.computedStyles),
     heading: firstHeadingSelector(input.computedStyles),
   }
 
@@ -110,7 +131,9 @@ export function buildProfile(input: ProfileInput): ScreenProfile {
     const value =
       property.kind === "copy"
         ? resolveLabel(input.text, selector)
-        : readStyle(input.computedStyles, selector, property.styleProperty)
+        : property.kind === "derived"
+          ? deriveValue(property.property, input.text, selector)
+          : readStyle(input.computedStyles, selector, property.styleProperty)
 
     if (value === null || value.length === 0) continue
     values.push({ property: property.property, kind: property.kind, selector, value })
@@ -125,19 +148,46 @@ export function profileValue(profile: ScreenProfile, property: string): ProfileV
 }
 
 /**
- * The screen's terminal action: the last interactive element in reading order,
- * which is the bottom-most and, among elements on the same line, the
- * right-most. On a step with `Back` beside `Continue` that is `Continue`, and
- * on a step with one full-width button it is that button.
+ * The screen's terminal action: the last action in reading order that does not
+ * look like every other action around it.
  *
- * A heuristic, and a stated one. It is deterministic, which is what matters:
- * the same screen always yields the same anchor, so two screens are compared
- * on the same element rather than on whichever element a model looked at.
+ * Reading order alone is not enough. A screen asking a question offers several
+ * answers, and the last one is the bottom answer, not a call to action: taking
+ * "Married a while" as this screen's action and comparing it against another
+ * screen's "Continue" compares two things that are not the same kind of thing.
+ * What separates them is that the answers are peers, drawn identically, while a
+ * call to action is the one element on the screen drawn like itself.
+ *
+ * So actions are grouped by how they are painted, and only an action alone in
+ * its group can be the terminal one. A screen offering nothing but peers has no
+ * terminal action and simply holds no `cta` values, the same way a screen with
+ * no heading holds no heading values.
+ *
+ * A heuristic, and a stated one. What matters is that it is deterministic: the
+ * same screen always yields the same anchor, so two screens are compared on the
+ * same element rather than on whichever element a model happened to look at.
  */
-export function terminalActionSelector(signature: Signature): string | null {
+export function terminalActionSelector(
+  signature: Signature,
+  computedStyles: ComputedStyles,
+): string | null {
   const actions = signature.interactive.filter((element) => ACTION_TAGS.includes(element.tag))
-  const chosen = actions[actions.length - 1] ?? signature.interactive[signature.interactive.length - 1]
-  return chosen?.selector ?? null
+  if (actions.length === 0) return null
+
+  const appearance = (selector: string): string => {
+    const styles = computedStyles[selector]?.styles
+    if (!styles) return "unrecorded"
+    return [styles["background-color"], styles["border-radius"], styles["font-size"]].join("|")
+  }
+
+  const peers = new Map<string, number>()
+  for (const action of actions) {
+    const key = appearance(action.selector)
+    peers.set(key, (peers.get(key) ?? 0) + 1)
+  }
+
+  const alone = actions.filter((action) => peers.get(appearance(action.selector)) === 1)
+  return alone[alone.length - 1]?.selector ?? null
 }
 
 /** The screen's first heading, top to bottom. Ties break on the selector. */
@@ -179,6 +229,23 @@ export function resolveLabel(text: ScreenText, selector: string): string {
   }
 
   return truncate(parts.join(" ").replace(/\s+/g, " ").trim())
+}
+
+/**
+ * A derived property's value, worked out from the record rather than looked up
+ * in it. Exported because the reconciliation gate verifies a derived value by
+ * calling this again and comparing, which is what keeps such a value the
+ * record's rather than the model's.
+ */
+export function deriveValue(
+  property: string,
+  text: ScreenText,
+  selector: string,
+): string | null {
+  if (property !== "cta.voice") return null
+
+  const label = resolveLabel(text, selector)
+  return label.length === 0 ? null : labelVoice(label)
 }
 
 function readStyle(
