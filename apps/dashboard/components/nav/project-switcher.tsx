@@ -11,7 +11,7 @@
  */
 
 import * as React from "react"
-import { RiExpandUpDownLine } from "@remixicon/react"
+import { RiCheckLine, RiExpandUpDownLine } from "@remixicon/react"
 import type { Project } from "@drift/core/types"
 
 import { count } from "@/lib/format"
@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -71,37 +72,50 @@ export function ProjectSwitcher({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="w-72">
-        <DropdownMenuLabel>Watched projects</DropdownMenuLabel>
-        <DropdownMenuSeparator />
+        {/*
+         * The label and the items are one group because the label is a
+         * `GroupLabel`, which names a group and throws without one. A menu that
+         * throws on open is a menu that never opens.
+         */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Watched projects</DropdownMenuLabel>
+          <DropdownMenuSeparator />
 
-        {projects.map(({ project, openFindings }) => (
-          <DropdownMenuItem
-            key={project.id}
-            onClick={() => choose(project.id)}
-            className="items-start gap-2"
-          >
-            <ProjectMark name={project.name} />
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate">{project.name}</span>
-              <span className="truncate font-mono text-xs text-muted-foreground">
-                {project.repo}
+          {projects.map(({ project, openFindings }) => (
+            <DropdownMenuItem
+              key={project.id}
+              onClick={() => choose(project.id)}
+              className="items-start gap-2"
+              data-current={project.id === current.id ? "" : undefined}
+            >
+              <ProjectMark name={project.name} />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate">{project.name}</span>
+                <span className="truncate font-mono text-xs text-muted-foreground">
+                  {project.repo}
+                </span>
               </span>
-            </span>
-            <span className="flex shrink-0 items-center gap-1.5">
-              {openFindings > 0 ? (
-                <Badge title={count(openFindings, "unresolved finding")}>
-                  {openFindings}
-                </Badge>
-              ) : null}
-              <span
-                className="font-mono text-xs text-muted-foreground"
-                title="Drift score"
-              >
-                {project.driftScore}
+              <span className="flex shrink-0 items-center gap-1.5">
+                {openFindings > 0 ? (
+                  <Badge title={count(openFindings, "unresolved finding")}>
+                    {openFindings}
+                  </Badge>
+                ) : null}
+                <span
+                  className="font-mono text-xs text-muted-foreground"
+                  title="Drift score"
+                >
+                  {project.driftScore}
+                </span>
+                {project.id === current.id ? (
+                  <span title="The project you are looking at">
+                    <RiCheckLine className="size-4 text-muted-foreground" />
+                  </span>
+                ) : null}
               </span>
-            </span>
-          </DropdownMenuItem>
-        ))}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
