@@ -346,6 +346,37 @@ for member in "$SA_WORKER" "$SA_DASHBOARD"; do
 done
 ```
 
+### Minting session cookies
+
+The dashboard exchanges a Firebase ID token for a session cookie, and that
+needs two permissions neither of which is implied by anything above.
+
+**It has to be allowed to mint one.** Creating a session cookie is a call to
+the Firebase Auth admin API, and `roles/datastore.user` does not carry it.
+
+**It has to be able to sign one.** With a key file the SDK signs locally; on
+Cloud Run there is no key file, so it asks Google's IAM service to sign on the
+account's behalf, which requires the account to impersonate **itself**.
+
+```bash
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA_DASHBOARD}" \
+  --role=roles/firebaseauth.admin --condition=None
+
+gcloud iam service-accounts add-iam-policy-binding "$SA_DASHBOARD" \
+  --member="serviceAccount:${SA_DASHBOARD}" \
+  --role=roles/iam.serviceAccountTokenCreator
+```
+
+The second is granted on the account as a resource rather than project-wide, so
+the dashboard can impersonate itself and nothing else.
+
+Without both, Google accepts the sign-in and the dashboard rejects it a moment
+later: the browser gets "that sign-in was not accepted" and the log says
+`auth.session_rejected` with `insufficient permission`. It reads like an auth
+configuration problem and is not one. The message is identical for either
+missing permission, so check the account holds both rather than guessing which.
+
 ### The secrets
 
 Granted one secret at a time rather than project-wide, so each runtime can read
@@ -353,21 +384,22 @@ exactly what it needs. The worker gets all twelve. The dashboard gets ten: it
 calls no model, so it has no reason to hold the Gemini key, and it renders
 nothing, so it has no reason to hold a preview's session cookie.
 
+The lists are written out in the `for` line rather than held in a variable,
+because macOS defaults to zsh and zsh does not split an unquoted variable into
+words the way bash does. `for name in $WORKER_SECRETS` there passes all twelve
+names as a single name, and every call fails on a secret id with spaces in it.
+
 ```bash
-WORKER_SECRETS="GEMINI_API_KEY GOOGLE_CLOUD_PROJECT FIRESTORE_DATABASE STORAGE_BUCKET \
-GITHUB_TOKEN GITHUB_REPO_ALLOWLIST PREVIEW_AUTH_COOKIE_VALUE FIREBASE_API_KEY \
-FIREBASE_AUTH_DOMAIN FIREBASE_PROJECT_ID FIREBASE_APP_ID NEXT_PUBLIC_APP_URL"
-
-DASHBOARD_SECRETS="GOOGLE_CLOUD_PROJECT FIRESTORE_DATABASE STORAGE_BUCKET \
-GITHUB_TOKEN GITHUB_REPO_ALLOWLIST FIREBASE_API_KEY \
-FIREBASE_AUTH_DOMAIN FIREBASE_PROJECT_ID FIREBASE_APP_ID NEXT_PUBLIC_APP_URL"
-
-for name in $WORKER_SECRETS; do
+for name in GEMINI_API_KEY GOOGLE_CLOUD_PROJECT FIRESTORE_DATABASE STORAGE_BUCKET \
+            GITHUB_TOKEN GITHUB_REPO_ALLOWLIST PREVIEW_AUTH_COOKIE_VALUE FIREBASE_API_KEY \
+            FIREBASE_AUTH_DOMAIN FIREBASE_PROJECT_ID FIREBASE_APP_ID NEXT_PUBLIC_APP_URL; do
   gcloud secrets add-iam-policy-binding "$name" \
     --member="serviceAccount:${SA_WORKER}" --role=roles/secretmanager.secretAccessor
 done
 
-for name in $DASHBOARD_SECRETS; do
+for name in GOOGLE_CLOUD_PROJECT FIRESTORE_DATABASE STORAGE_BUCKET \
+            GITHUB_TOKEN GITHUB_REPO_ALLOWLIST FIREBASE_API_KEY \
+            FIREBASE_AUTH_DOMAIN FIREBASE_PROJECT_ID FIREBASE_APP_ID NEXT_PUBLIC_APP_URL; do
   gcloud secrets add-iam-policy-binding "$name" \
     --member="serviceAccount:${SA_DASHBOARD}" --role=roles/secretmanager.secretAccessor
 done
@@ -820,6 +852,7 @@ gcloud run jobs deploy drift-worker \
 | An execution exits immediately with usage text | It was started without a container override. `gcloud run jobs execute` needs `--args` |
 | `Target page, context or browser has been closed` | The job is out of memory. It wants 4Gi |
 | Sign-in fails with `auth/unauthorized-domain` | Console step 3 |
+| Google accepts the sign-in, then the dashboard says it was not accepted | `auth.session_rejected` in the log. The dashboard cannot mint a session cookie: it needs **both** bindings in step 8's "Minting session cookies", and the message does not say which one is missing |
 | The deploy of the service fails on `--allow-unauthenticated` | An org policy blocks public Cloud Run services. See the note at the end of step 12 |
 | `Location ... is not supported` creating the scheduler entry | It was created with `--location="$REGION"`. Cloud Scheduler is not offered everywhere Cloud Run is; use `$SCHEDULER_REGION` (step 1) |
 | Removing a project fails, and the project is still there with no screenshots | The dashboard's service account has `objectViewer` rather than `objectAdmin` on the bucket. The images went first, so re-run the removal once the binding in step 8 is right |
