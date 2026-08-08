@@ -12,7 +12,10 @@
 # workspace. What does not get uploaded is in .dockerignore.
 
 substitutions:
-  _REGION: us-central1
+  # The Artifact Registry the image is pushed to, which deploy.md keeps in the
+  # same region as Cloud Run and Firestore. Overridden per build with
+  # --substitutions=_REGION=...
+  _REGION: africa-south1
   _REPOSITORY: drift
   _IMAGE: drift-dashboard
 

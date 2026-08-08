@@ -18,13 +18,40 @@ and each is referenced from the step that needs it.
 ## 1. Set the placeholders
 
 `PROJECT_ID` is the Google Cloud project id, not its display name. `REGION` is
-one Cloud Run region for everything, so the service, the job, the bucket, the
-scheduler and the images all sit together and nothing pays to cross a region.
+one region for the service, the job, the bucket and the images, so they sit
+together and nothing pays to cross a region on the hot path.
+
+**`REGION` is not a free choice if this project already has a Firestore
+database.** A Firestore location is fixed when the database is created and can
+never be moved, and it is the one thing everything else talks to constantly: a
+worker run makes many sequential Firestore calls per screen, and every dashboard
+page assembles itself from several queries. Put the compute where the data
+already is, not the other way round. Check before you pick:
 
 ```bash
-export PROJECT_ID=your-project-id
-export REGION=us-central1
+gcloud firestore databases list --format='value(name.basename(),locationId)'
 ```
+
+For this project that answers `(default) africa-south1`, so:
+
+```bash
+export PROJECT_ID=drift-504722
+export REGION=africa-south1
+```
+
+Cloud Scheduler needs its own, because **it is not offered in every region
+`REGION` can be**, and `africa-south1` is one of the ones it is not offered in.
+That costs nothing: a scheduler entry makes one call to the Cloud Run Admin API
+to start a job, so its region adds one request's latency per run rather than one
+per Firestore operation. Any supported location will do.
+
+```bash
+export SCHEDULER_REGION=europe-west1
+```
+
+If `REGION` happens to be a region Cloud Scheduler supports, set
+`SCHEDULER_REGION` to the same thing and the distinction disappears. The current
+list is at <https://cloud.google.com/scheduler/docs/locations>.
 
 Point the CLI at it and record the project number, which a couple of service
 agents are named after.
@@ -98,7 +125,11 @@ defaults to (`AGENTS.md` sections 1 and 8).
 
 Skip this if you already ran Drift locally against this project: it is the same
 database, and the projects, runs and findings you have already written are the
-ones the deployed dashboard will read.
+ones the deployed dashboard will read. **This project has one already**, in
+`africa-south1`, which is where step 1 got `REGION` from.
+
+Creating one is the single least reversible command in this file. Its location
+cannot be changed afterwards, and everything else follows it.
 
 ```bash
 gcloud firestore databases create --location="$REGION" --type=firestore-native
@@ -158,6 +189,9 @@ They build in the background. Watch them until every one says `READY`:
 gcloud firestore indexes composite list --format='table(name.basename(), state)'
 ```
 
+Run that first, before the block above. If it already lists nine `READY`
+indexes, they were created while running Drift locally and this step is done.
+
 ---
 
 ## 5. The screenshot bucket
@@ -166,9 +200,20 @@ Private, and firmly so: the dashboard streams every screenshot through
 `/api/screens/[screenId]/image` behind the session, and no object is ever
 public and no signed URL is ever handed to a browser.
 
-```bash
-export BUCKET="${PROJECT_ID}-drift-screenshots"
+As with Firestore, skip the creation if you already ran Drift locally: the
+bucket named in your `.env.local` is the one holding the screenshots the
+deployed dashboard will serve. Take the name from there rather than inventing a
+second one.
 
+```bash
+export BUCKET=drift-504722-screenshots
+
+gcloud storage buckets describe "gs://${BUCKET}" --format='value(name,location)'
+```
+
+If it does not exist yet:
+
+```bash
 gcloud storage buckets create "gs://${BUCKET}" \
   --location="$REGION" \
   --uniform-bucket-level-access \
@@ -286,14 +331,19 @@ done
 
 ### The bucket
 
-The worker uploads screenshots. The dashboard only ever reads them back.
+The worker uploads screenshots. The dashboard reads them back to stream through
+`/api/screens/[screenId]/image`, and deletes them when a project is removed:
+removing a project deletes every screenshot under its prefix (`AGENTS.md`
+section 2), and that cascade runs in the dashboard because that is where the
+person pressing the button is. So it needs `objectAdmin` too, not
+`objectViewer`. A read-only dashboard fails on the first step of a removal, with
+a 403 from Cloud Storage and a project left half deleted.
 
 ```bash
-gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-  --member="serviceAccount:${SA_WORKER}" --role=roles/storage.objectAdmin
-
-gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-  --member="serviceAccount:${SA_DASHBOARD}" --role=roles/storage.objectViewer
+for member in "$SA_WORKER" "$SA_DASHBOARD"; do
+  gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+    --member="serviceAccount:${member}" --role=roles/storage.objectAdmin
+done
 ```
 
 ### The secrets
@@ -373,6 +423,11 @@ gcloud builds submit --config cloudbuild.worker.yaml \
 The worker image is the slower of the two; the Playwright base image it starts
 from is about a gigabyte, and it carries the Chromium build pinned in
 `apps/worker/package.json`.
+
+No `--region` on these, on purpose. The build runs in Cloud Build's default
+pool and pushes to the Artifact Registry named in `_REGION`, which is where the
+images have to end up. Where the build itself ran costs one upload, once, and
+Cloud Build is not offered in every region Cloud Run is.
 
 ### The dashboard service
 
@@ -498,11 +553,16 @@ recording `scheduled` as the run's trigger because the command line says so.
 Substitute `PROJECT_DOC_ID` in both places. The name of the scheduler entry is
 the thing you will read on the console page, so it carries the project id too.
 
+The entry lives in `SCHEDULER_REGION` and the job it starts lives in `REGION`.
+Those are two different places when Cloud Scheduler is not offered where the
+rest of Drift runs (step 1), and only the `--location` flag moves: the `--uri`
+still names the job's own region, because that is where the job is.
+
 ```bash
 export PROJECT_DOC_ID=paste-the-firestore-project-id
 
 gcloud scheduler jobs create http "drift-run-${PROJECT_DOC_ID}" \
-  --location="$REGION" \
+  --location="$SCHEDULER_REGION" \
   --schedule="0 */6 * * *" \
   --time-zone="Etc/UTC" \
   --uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/drift-worker:run" \
@@ -518,7 +578,7 @@ a demo, `*/30 * * * *` gives you a run every half hour without waiting.
 Fire it once without waiting for the clock:
 
 ```bash
-gcloud scheduler jobs run "drift-run-${PROJECT_DOC_ID}" --location="$REGION"
+gcloud scheduler jobs run "drift-run-${PROJECT_DOC_ID}" --location="$SCHEDULER_REGION"
 ```
 
 Repeat the block for each further project you watch.
@@ -635,7 +695,7 @@ try to sign in.
 3. **Authorise the dashboard's domain.** Firebase console -> **Authentication**
    -> **Settings** -> **Authorized domains** -> **Add domain**, and paste the
    host part of `$DASHBOARD_URL`, for example
-   `drift-dashboard-abc123-uc.a.run.app`, without the `https://`. Sign-in fails
+   `drift-dashboard-abc123.africa-south1.run.app`, without the `https://`. Sign-in fails
    with `auth/unauthorized-domain` until this is done.
 4. **Register a web app, if you have not already.** Firebase console ->
    **Project settings** -> **Your apps** -> **Web**. The `apiKey`,
@@ -761,3 +821,6 @@ gcloud run jobs deploy drift-worker \
 | `Target page, context or browser has been closed` | The job is out of memory. It wants 4Gi |
 | Sign-in fails with `auth/unauthorized-domain` | Console step 3 |
 | The deploy of the service fails on `--allow-unauthenticated` | An org policy blocks public Cloud Run services. See the note at the end of step 12 |
+| `Location ... is not supported` creating the scheduler entry | It was created with `--location="$REGION"`. Cloud Scheduler is not offered everywhere Cloud Run is; use `$SCHEDULER_REGION` (step 1) |
+| Removing a project fails, and the project is still there with no screenshots | The dashboard's service account has `objectViewer` rather than `objectAdmin` on the bucket. The images went first, so re-run the removal once the binding in step 8 is right |
+| Every page and every run feels slow, and nothing is erroring | Compute is in a different region from Firestore. Compare `gcloud firestore databases list` against the service's region; the data cannot move, so the compute has to |
