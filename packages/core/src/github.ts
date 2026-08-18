@@ -205,20 +205,42 @@ export function createInstallationClient(
  * credential this would pick, and callers log it (AGENTS.md section 7).
  */
 export function githubClientFor(
-  installationId: number | null,
+  installationId: number | null | undefined,
   config = githubAppConfig(),
 ): Octokit {
-  return installationId !== null && config
-    ? createInstallationClient(installationId, config)
+  const installation = usableInstallation(installationId)
+  return installation !== null && config
+    ? createInstallationClient(installation, config)
     : createGitHubClient()
 }
 
 /** Which credential `githubClientFor` would use, for the caller to log. */
 export function githubAuthMode(
-  installationId: number | null,
+  installationId: number | null | undefined,
   config = githubAppConfig(),
 ): "app" | "token" {
-  return installationId !== null && config ? "app" : "token"
+  return usableInstallation(installationId) !== null && config ? "app" : "token"
+}
+
+/**
+ * An installation id worth authenticating with, or null.
+ *
+ * Deliberately wider than `!== null`. A project written before the field
+ * existed has no `installationId` at all, and a missing Firestore field reads
+ * back as `undefined` rather than as the null the type promises. `undefined
+ * !== null` is true, so a plain null check sends every such project down the
+ * app path carrying nothing, and Octokit refuses at the point of use with a
+ * message about a falsy value that names neither the project nor the field.
+ *
+ * So the question asked here is not "is this not null" but "is this a number
+ * that could be an installation", which is the same question for a document
+ * that has the field, a document that never had it, and a document where it
+ * arrived as something else entirely.
+ */
+function usableInstallation(installationId: number | null | undefined): number | null {
+  return typeof installationId === "number" && Number.isInteger(installationId) && installationId > 0
+    ? installationId
+    : null
 }
 
 /** One installation of the app, and the repos it was granted. */

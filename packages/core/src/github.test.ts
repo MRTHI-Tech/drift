@@ -9,6 +9,7 @@ import {
   createAppClient,
   createGitHubClient,
   createInstallationClient,
+  githubClientFor,
   decodePrivateKey,
   fetchDriftConfig,
   fetchRepoFile,
@@ -141,6 +142,28 @@ describe("githubAuthMode", () => {
 
   it("falls back to the token when the app is not configured", () => {
     expect(githubAuthMode(42, null)).toBe("token")
+  })
+
+  /**
+   * The case that got past every test above and only appeared against real
+   * data: a project written before `installationId` existed has no such field,
+   * and a missing Firestore field reads back `undefined`. Every fixture here
+   * passed `null` explicitly, which is the one shape production did not have.
+   */
+  it("treats a missing installation as no installation, not as one", () => {
+    expect(githubAuthMode(undefined, config)).toBe("token")
+
+    // Reaching for the token, and saying so, is the whole point: the failure
+    // this replaces was Octokit refusing deep inside the app path with a
+    // message naming neither the project nor the field.
+    expect(() => githubClientFor(undefined, config)).toThrow(/GITHUB_TOKEN/)
+  })
+
+  it("treats a nonsense installation as no installation", () => {
+    expect(githubAuthMode(0, config)).toBe("token")
+    expect(githubAuthMode(-1, config)).toBe("token")
+    expect(githubAuthMode(1.5, config)).toBe("token")
+    expect(githubAuthMode(Number.NaN, config)).toBe("token")
   })
 })
 
