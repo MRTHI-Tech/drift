@@ -539,7 +539,6 @@ gcloud run jobs deploy drift-worker \
   --tasks=1 \
   --parallelism=1 \
   --max-retries=0 \
-  --execution-environment=gen2 \
   --set-secrets="GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLOUD_PROJECT=GOOGLE_CLOUD_PROJECT:latest,FIRESTORE_DATABASE=FIRESTORE_DATABASE:latest,STORAGE_BUCKET=STORAGE_BUCKET:latest,GITHUB_TOKEN=GITHUB_TOKEN:latest,GITHUB_APP_ID=GITHUB_APP_ID:latest,GITHUB_APP_PRIVATE_KEY=GITHUB_APP_PRIVATE_KEY:latest,GITHUB_REPO_ALLOWLIST=GITHUB_REPO_ALLOWLIST:latest,PREVIEW_AUTH_COOKIE_VALUE=PREVIEW_AUTH_COOKIE_VALUE:latest,FIREBASE_API_KEY=FIREBASE_API_KEY:latest,FIREBASE_AUTH_DOMAIN=FIREBASE_AUTH_DOMAIN:latest,FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,FIREBASE_APP_ID=FIREBASE_APP_ID:latest,NEXT_PUBLIC_APP_URL=NEXT_PUBLIC_APP_URL:latest"
 ```
 
@@ -556,10 +555,30 @@ Four of those flags are decisions rather than defaults.
 - **`--task-timeout=30m`.** A run renders every declared route at every
   declared viewport, sequentially and on purpose, so a project with a lot of
   routes is slow rather than parallel and hard on the watched preview.
-- **`--execution-environment=gen2`.** Chromium wants a full Linux kernel. The
-  job also launches it with `--no-sandbox` and `--disable-dev-shm-usage`, which
-  the worker turns on by itself when it sees `CLOUD_RUN_JOB` in its environment
-  and never on a laptop.
+- **Second generation execution.** Chromium wants a full Linux kernel. The job
+  also launches it with `--no-sandbox` and `--disable-dev-shm-usage`, which the
+  worker turns on by itself when it sees `CLOUD_RUN_JOB` in its environment and
+  never on a laptop.
+
+  There is deliberately no `--execution-environment=gen2` above. No `gcloud run
+  jobs` subcommand accepts that flag as of SDK 579 — not `deploy`, not
+  `update`, not `create`, and not their `beta` forms — and passing it fails
+  client-side with `unrecognized arguments`, before any call is made. That
+  failure is quiet in the worst way: the command errors, the job keeps running
+  the image it already had, and nothing anywhere says the deploy did not
+  happen. Check `metadata.generation` if a deploy seems not to have landed.
+
+  So the setting is left where it already is rather than restated. Confirm it
+  after every deploy, because a job that silently drops to first generation
+  renders nothing and says only that the browser closed:
+
+  ```bash
+  gcloud run jobs describe drift-worker --region="$REGION" \
+    --format='value(spec.template.metadata.annotations["run.googleapis.com/execution-environment"])'
+  ```
+
+  If that ever comes back empty, export the job to YAML, set the annotation,
+  and `gcloud run jobs replace` it.
 
 The image has no default command. Every execution supplies one as a container
 override, so an execution that arrives without one stops at the CLI's usage
@@ -870,6 +889,7 @@ gcloud run jobs deploy drift-worker \
 
 | What you see | What it usually is |
 | --- | --- |
+| A worker deploy reports nothing and changes nothing | The command failed client-side on an unrecognised flag, so no call was made. `gcloud run jobs describe drift-worker --format='value(metadata.generation)'` is unchanged when this happens, and Cloud Run's audit log has no `Jobs.ReplaceJob` entry. `--execution-environment` is the one that does this |
 | The dashboard is empty after separating accounts | A project created before `projects.userId` existed has no owner and is invisible. `pnpm adopt-projects --user <uid>` reports them, `--apply` hands them over. An unadopted project also blocks its repo from being added again, since a repo may only be watched once |
 | Every dashboard page 500s with `FAILED_PRECONDITION` | The `projects.userId + createdAt` composite index is missing or still `CREATING`. Step 4 declares it; `gcloud firestore indexes composite list` says which |
 | The repo picker is empty but the app is installed | The installation is not linked to the signed-in account. That link is written on the way back from GitHub, so an install done without going through Connect GitHub leaves nothing to read. Install again from the dialog |
