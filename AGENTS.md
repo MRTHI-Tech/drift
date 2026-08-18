@@ -95,11 +95,15 @@ Any finding proposed by a model call must be verified against the `computedStyle
 
 ## 8. Environment variables, canonical list
 
-`GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `FIRESTORE_DATABASE` (default `(default)`), `STORAGE_BUCKET`, `GITHUB_TOKEN`, `GITHUB_REPO_ALLOWLIST` (comma-separated owner/name the agent may open PRs against), `PREVIEW_AUTH_COOKIE_VALUE` (value the render worker puts in the cookie named by `authCookieName`), `FIREBASE_*` (auth client config), `NEXT_PUBLIC_APP_URL`.
+`GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `FIRESTORE_DATABASE` (default `(default)`), `STORAGE_BUCKET`, `GITHUB_TOKEN`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PEM, or base64 of one, because a `.env` file cannot hold a multi-line value), `GITHUB_REPO_ALLOWLIST` (comma-separated owner/name the agent may open PRs against), `PREVIEW_AUTH_COOKIE_VALUE` (value the render worker puts in the cookie named by `authCookieName`), `FIREBASE_*` (auth client config), `NEXT_PUBLIC_APP_URL`.
 
 A project whose config sets `authCookieName` fails its run before the browser launches when `PREVIEW_AUTH_COOKIE_VALUE` is empty. Rendering a login page under a signed-in route's name would poison every later comparison, so this is loud rather than silent.
 
 The `GITHUB_REPO_ALLOWLIST` is a hard gate: the agent refuses to open a PR against any repo not on it, regardless of what Firestore says.
+
+Two GitHub credentials exist, and they are not alternatives of equal standing. A **GitHub App installation** is a person's grant, made on GitHub, over the repos they chose, and it is what a project should be on. The **fine-grained PAT** in `GITHUB_TOKEN` is the fallback it replaces, kept because a deployment with no app registered and a project created before one both have to keep working. `githubClientFor` in `packages/core/src/github.ts` is the one place that chooses between them, and `githubAuthMode` reports the choice so callers can log it.
+
+The allowlist stays in force under both. An installation already bounds what Drift can reach, which makes the list the second lock on a locked door; it is kept anyway until the app has been proven in a deployed run, because the cost of the redundancy is a line in an env file and the cost of being wrong is a pull request on somebody else's repository. Removing it is a change to this section, deliberately.
 
 ## 9. What is out of scope until after August 31
 

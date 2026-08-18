@@ -1,8 +1,15 @@
 /**
- * Every GitHub call Drift makes lives here (AGENTS.md section 1). Fine-grained
- * PAT from `GITHUB_TOKEN` for now, GitHub App later; callers never build their
- * own client and never touch the REST API directly.
+ * Every GitHub call Drift makes lives here (AGENTS.md section 1). Callers never
+ * build their own client and never touch the REST API directly.
+ *
+ * Two ways in, and the app is the one that is meant to win. A GitHub App is
+ * installed by a person onto the repos they chose, so its reach is scoped by
+ * GitHub itself rather than by anything Drift says about it. The fine-grained
+ * PAT it replaces stays as the fallback, because a deployment that has not
+ * moved yet is not a broken one: with no app configured, or a project that
+ * predates one, `GITHUB_TOKEN` still answers.
  */
+import { createAppAuth } from "@octokit/auth-app"
 import { Octokit } from "@octokit/rest"
 
 import { parseTokenDefinitions, type TokenSet } from "./analysis/tokens"
@@ -77,6 +84,9 @@ export function assertRepoAllowed(
   )
 }
 
+/** Sent on every request Drift makes, whichever credential is behind it. */
+const USER_AGENT = "drift-worker"
+
 /**
  * The authenticated client. The token is read from the environment so it is
  * never passed around, never stored, and never logged (AGENTS.md section 1).
@@ -85,7 +95,130 @@ export function createGitHubClient(token: string | undefined = process.env.GITHU
   if (!token) {
     throw new GitHubError("GITHUB_TOKEN is not set. See AGENTS.md section 8.")
   }
-  return new Octokit({ auth: token, userAgent: "drift-worker" })
+  return new Octokit({ auth: token, userAgent: USER_AGENT })
+}
+
+/** The GitHub App's own credentials, as the environment carries them. */
+export interface GitHubAppConfig {
+  appId: string
+  /** PEM, already decoded. Never logged, never stored, never returned upward. */
+  privateKey: string
+}
+
+/**
+ * The app's credentials from `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY`
+ * (AGENTS.md section 8), or null when either is unset.
+ *
+ * Null rather than a throw on purpose. An unconfigured app is the state every
+ * deployment is in before the app is registered, and the fallback exists
+ * precisely so that state keeps working. Only asking for an app client when
+ * there is no app is an error.
+ */
+export function githubAppConfig(env: NodeJS.ProcessEnv = process.env): GitHubAppConfig | null {
+  const appId = env.GITHUB_APP_ID?.trim()
+  const privateKey = env.GITHUB_APP_PRIVATE_KEY?.trim()
+  if (!appId || !privateKey) return null
+
+  return { appId, privateKey: decodePrivateKey(privateKey) }
+}
+
+/**
+ * The private key as a PEM, from either spelling the environment can hold.
+ *
+ * GitHub issues a multi-line PEM, and a multi-line value is the one thing a
+ * `.env` file cannot carry. So both are accepted: the PEM as GitHub gives it,
+ * and the same bytes base64-encoded onto one line. They are told apart by
+ * looking at the text rather than by a second variable declaring which it is,
+ * because a variable that has to agree with another variable is a variable that
+ * will one day disagree with it.
+ */
+export function decodePrivateKey(raw: string): string {
+  // A PEM pasted into a shell often arrives with its newlines escaped.
+  if (raw.includes("-----BEGIN")) return raw.replace(/\\n/g, "\n")
+
+  const decoded = Buffer.from(raw, "base64").toString("utf8")
+  if (!decoded.includes("-----BEGIN")) {
+    throw new GitHubError(
+      "GITHUB_APP_PRIVATE_KEY is neither a PEM nor base64 of one. See AGENTS.md section 8.",
+    )
+  }
+  return decoded
+}
+
+function requireAppConfig(config: GitHubAppConfig | null): GitHubAppConfig {
+  if (!config) {
+    throw new GitHubError(
+      "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are not set, so there is no app to authenticate as. " +
+        "See AGENTS.md section 8.",
+    )
+  }
+  return config
+}
+
+/**
+ * A client authenticated as the app itself rather than as any installation.
+ *
+ * It can read what the app is and which installations it has, and it can read
+ * no repository at all. Everything that touches a repo goes through
+ * `createInstallationClient`, because an installation is the only thing that
+ * carries a person's grant.
+ */
+export function createAppClient(config = githubAppConfig()): Octokit {
+  const { appId, privateKey } = requireAppConfig(config)
+  return new Octokit({
+    authStrategy: createAppAuth,
+    auth: { appId, privateKey },
+    userAgent: USER_AGENT,
+  })
+}
+
+/**
+ * A client scoped to one installation, which is to say to exactly the repos the
+ * person who installed it chose.
+ *
+ * The token behind this lasts an hour and is minted, cached, and renewed by
+ * Octokit. Nothing here stores one, which is the point: an app's reach can be
+ * withdrawn on GitHub and is withdrawn everywhere at once, where a PAT lives on
+ * until somebody remembers it.
+ */
+export function createInstallationClient(
+  installationId: number,
+  config = githubAppConfig(),
+): Octokit {
+  const { appId, privateKey } = requireAppConfig(config)
+  return new Octokit({
+    authStrategy: createAppAuth,
+    auth: { appId, privateKey, installationId },
+    userAgent: USER_AGENT,
+  })
+}
+
+/**
+ * The client for one project's repo: its installation when it has one and the
+ * app is configured, and the personal access token otherwise.
+ *
+ * This is what callers use. It is the one place the migration is expressed, so
+ * moving a project onto the app is giving it an `installationId` and nothing
+ * else, and a deployment with no app configured is unaffected.
+ *
+ * The fallback is deliberate but not silent: `githubAuthMode` reports which
+ * credential this would pick, and callers log it (AGENTS.md section 7).
+ */
+export function githubClientFor(
+  installationId: number | null,
+  config = githubAppConfig(),
+): Octokit {
+  return installationId !== null && config
+    ? createInstallationClient(installationId, config)
+    : createGitHubClient()
+}
+
+/** Which credential `githubClientFor` would use, for the caller to log. */
+export function githubAuthMode(
+  installationId: number | null,
+  config = githubAppConfig(),
+): "app" | "token" {
+  return installationId !== null && config ? "app" : "token"
 }
 
 export interface FetchFileInput {

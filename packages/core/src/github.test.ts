@@ -6,9 +6,14 @@ import {
   GitHubError,
   RepoNotAllowedError,
   assertRepoAllowed,
+  createAppClient,
   createGitHubClient,
+  createInstallationClient,
+  decodePrivateKey,
   fetchDriftConfig,
   fetchRepoFile,
+  githubAppConfig,
+  githubAuthMode,
   isRepoAllowed,
   isSourcePath,
   parseRepo,
@@ -59,6 +64,83 @@ describe("parseRepo", () => {
 describe("createGitHubClient", () => {
   it("refuses to run without a token", () => {
     expect(() => createGitHubClient(undefined)).toThrow(/GITHUB_TOKEN/)
+  })
+})
+
+/**
+ * A PEM shaped like the one GitHub issues. Not a usable key and never used as
+ * one: every test here stops before a request is signed.
+ */
+const PEM = "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAKj3\n-----END RSA PRIVATE KEY-----"
+
+describe("decodePrivateKey", () => {
+  it("passes a PEM through unchanged", () => {
+    expect(decodePrivateKey(PEM)).toBe(PEM)
+  })
+
+  it("decodes the same bytes from base64, which is what fits in a .env file", () => {
+    expect(decodePrivateKey(Buffer.from(PEM, "utf8").toString("base64"))).toBe(PEM)
+  })
+
+  it("restores the newlines a shell escaped on the way in", () => {
+    expect(decodePrivateKey(PEM.replace(/\n/g, "\\n"))).toBe(PEM)
+  })
+
+  it("refuses anything that is neither", () => {
+    expect(() => decodePrivateKey("not a key")).toThrow(/GITHUB_APP_PRIVATE_KEY/)
+  })
+})
+
+describe("githubAppConfig", () => {
+  it("is null when neither variable is set, because that is the fallback state", () => {
+    expect(githubAppConfig({})).toBeNull()
+  })
+
+  it("is null when only one of the two is set", () => {
+    expect(githubAppConfig({ GITHUB_APP_ID: "1" })).toBeNull()
+    expect(githubAppConfig({ GITHUB_APP_PRIVATE_KEY: PEM })).toBeNull()
+  })
+
+  it("reads both and decodes the key", () => {
+    const config = githubAppConfig({
+      GITHUB_APP_ID: " 1234 ",
+      GITHUB_APP_PRIVATE_KEY: Buffer.from(PEM, "utf8").toString("base64"),
+    })
+    expect(config).toEqual({ appId: "1234", privateKey: PEM })
+  })
+})
+
+describe("the app clients", () => {
+  it("refuse to run with no app configured", () => {
+    expect(() => createAppClient(null)).toThrow(/GITHUB_APP_ID/)
+    expect(() => createInstallationClient(42, null)).toThrow(/GITHUB_APP_ID/)
+  })
+
+  it("build a client when one is", () => {
+    const config = { appId: "1234", privateKey: PEM }
+    expect(createAppClient(config)).toBeDefined()
+    expect(createInstallationClient(42, config)).toBeDefined()
+  })
+})
+
+/**
+ * Which credential a project gets. The fallback is the whole point of this
+ * pair: a project with no installation, or a deployment with no app, keeps
+ * working on the token it already had.
+ */
+describe("githubAuthMode", () => {
+  const config = { appId: "1234", privateKey: PEM }
+
+  it("uses the app when the project has an installation and the app exists", () => {
+    expect(githubAuthMode(42, config)).toBe("app")
+  })
+
+  it("falls back to the token when the project has no installation", () => {
+    expect(githubAuthMode(null, config)).toBe("token")
+  })
+
+  it("falls back to the token when the app is not configured", () => {
+    expect(githubAuthMode(42, null)).toBe("token")
   })
 })
 

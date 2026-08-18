@@ -13,6 +13,9 @@ build/
 .env.local
 .env.*.local
 
+# credentials. The GitHub App's private key is a key; it lives outside the repo.
+*.pem
+
 # test / tooling output
 coverage/
 .turbo/
