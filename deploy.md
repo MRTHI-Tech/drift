@@ -228,7 +228,7 @@ Every value in `AGENTS.md` section 8 becomes a secret. Nothing sensitive is in
 either Dockerfile, in any image, or in any `gcloud run` flag other than
 `--set-secrets`, which passes a reference rather than a value.
 
-Fill in each placeholder below before running the block. You have all twelve
+Fill in each placeholder below before running the block. You have most of these
 values already: they are the ones in your local `.env.local`, and where each
 comes from is in [docs/credentials.md](docs/credentials.md). Two notes on the
 list itself:
@@ -253,6 +253,8 @@ printf '%s' "$PROJECT_ID"                     | gcloud secrets create GOOGLE_CLO
 printf '%s' '(default)'                       | gcloud secrets create FIRESTORE_DATABASE        --replication-policy=automatic --data-file=-
 printf '%s' "$BUCKET"                         | gcloud secrets create STORAGE_BUCKET            --replication-policy=automatic --data-file=-
 printf '%s' 'PASTE_GITHUB_TOKEN'              | gcloud secrets create GITHUB_TOKEN              --replication-policy=automatic --data-file=-
+printf '%s' 'PASTE_GITHUB_APP_ID'             | gcloud secrets create GITHUB_APP_ID             --replication-policy=automatic --data-file=-
+printf '%s' 'PASTE_BASE64_OF_THE_PEM'         | gcloud secrets create GITHUB_APP_PRIVATE_KEY    --replication-policy=automatic --data-file=-
 printf '%s' 'owner/name'                      | gcloud secrets create GITHUB_REPO_ALLOWLIST     --replication-policy=automatic --data-file=-
 printf '\n'                                   | gcloud secrets create PREVIEW_AUTH_COOKIE_VALUE --replication-policy=automatic --data-file=-
 printf '%s' 'PASTE_FIREBASE_API_KEY'          | gcloud secrets create FIREBASE_API_KEY          --replication-policy=automatic --data-file=-
@@ -265,6 +267,29 @@ printf '%s' 'https://example.invalid'         | gcloud secrets create NEXT_PUBLI
 `GITHUB_REPO_ALLOWLIST` is the hard gate on pull requests (`AGENTS.md` section
 8). Put the watched repo's `owner/name` in it, comma-separated if there is more
 than one. An empty allowlist means no repo is writable, not every repo.
+
+`GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` are the GitHub App, which is what
+a project should be watched through: an installation is scoped by GitHub to the
+repos somebody picked, where the PAT reaches everything its owner can. Both are
+optional — with neither set, everything runs on `GITHUB_TOKEN` exactly as
+before, and a project with no `installationId` does anyway.
+
+The private key is the `.pem` GitHub gives you when you generate one. Secret
+Manager holds newlines happily, so the PEM can go in as it is; base64 on one
+line is accepted too, and is what a `.env.local` has to use.
+
+```bash
+base64 -i ~/Downloads/your-app.private-key.pem | tr -d '\n' \
+  | gcloud secrets create GITHUB_APP_PRIVATE_KEY --replication-policy=automatic --data-file=-
+```
+
+The app's **Setup URL** on GitHub has to be `$DASHBOARD_URL/api/github/callback`
+once step 9 has told you what `$DASHBOARD_URL` is. It is a single field, unlike
+the redirect URIs, so a machine developing locally and a deployed service
+cannot both have it; point it at whichever one is being used. Nothing breaks
+when it is wrong — the install still happens on GitHub, and the dashboard reads
+its installations from GitHub either way — but the person is not carried back
+into the dialog.
 
 To change any of these later, add a version rather than recreating the secret.
 The services read `:latest`, so a new version takes effect on the next
@@ -380,7 +405,7 @@ missing permission, so check the account holds both rather than guessing which.
 ### The secrets
 
 Granted one secret at a time rather than project-wide, so each runtime can read
-exactly what it needs. The worker gets all twelve. The dashboard gets ten: it
+exactly what it needs. The worker gets all fourteen. The dashboard gets twelve: it
 calls no model, so it has no reason to hold the Gemini key, and it renders
 nothing, so it has no reason to hold a preview's session cookie.
 
@@ -391,14 +416,16 @@ names as a single name, and every call fails on a secret id with spaces in it.
 
 ```bash
 for name in GEMINI_API_KEY GOOGLE_CLOUD_PROJECT FIRESTORE_DATABASE STORAGE_BUCKET \
-            GITHUB_TOKEN GITHUB_REPO_ALLOWLIST PREVIEW_AUTH_COOKIE_VALUE FIREBASE_API_KEY \
+            GITHUB_TOKEN GITHUB_APP_ID GITHUB_APP_PRIVATE_KEY \
+            GITHUB_REPO_ALLOWLIST PREVIEW_AUTH_COOKIE_VALUE FIREBASE_API_KEY \
             FIREBASE_AUTH_DOMAIN FIREBASE_PROJECT_ID FIREBASE_APP_ID NEXT_PUBLIC_APP_URL; do
   gcloud secrets add-iam-policy-binding "$name" \
     --member="serviceAccount:${SA_WORKER}" --role=roles/secretmanager.secretAccessor
 done
 
 for name in GOOGLE_CLOUD_PROJECT FIRESTORE_DATABASE STORAGE_BUCKET \
-            GITHUB_TOKEN GITHUB_REPO_ALLOWLIST FIREBASE_API_KEY \
+            GITHUB_TOKEN GITHUB_APP_ID GITHUB_APP_PRIVATE_KEY \
+            GITHUB_REPO_ALLOWLIST FIREBASE_API_KEY \
             FIREBASE_AUTH_DOMAIN FIREBASE_PROJECT_ID FIREBASE_APP_ID NEXT_PUBLIC_APP_URL; do
   gcloud secrets add-iam-policy-binding "$name" \
     --member="serviceAccount:${SA_DASHBOARD}" --role=roles/secretmanager.secretAccessor
@@ -474,7 +501,7 @@ gcloud run deploy drift-dashboard \
   --min-instances=0 \
   --max-instances=3 \
   --timeout=120s \
-  --set-secrets="GOOGLE_CLOUD_PROJECT=GOOGLE_CLOUD_PROJECT:latest,FIRESTORE_DATABASE=FIRESTORE_DATABASE:latest,STORAGE_BUCKET=STORAGE_BUCKET:latest,GITHUB_TOKEN=GITHUB_TOKEN:latest,GITHUB_REPO_ALLOWLIST=GITHUB_REPO_ALLOWLIST:latest,FIREBASE_API_KEY=FIREBASE_API_KEY:latest,FIREBASE_AUTH_DOMAIN=FIREBASE_AUTH_DOMAIN:latest,FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,FIREBASE_APP_ID=FIREBASE_APP_ID:latest,NEXT_PUBLIC_APP_URL=NEXT_PUBLIC_APP_URL:latest"
+  --set-secrets="GOOGLE_CLOUD_PROJECT=GOOGLE_CLOUD_PROJECT:latest,FIRESTORE_DATABASE=FIRESTORE_DATABASE:latest,STORAGE_BUCKET=STORAGE_BUCKET:latest,GITHUB_TOKEN=GITHUB_TOKEN:latest,GITHUB_APP_ID=GITHUB_APP_ID:latest,GITHUB_APP_PRIVATE_KEY=GITHUB_APP_PRIVATE_KEY:latest,GITHUB_REPO_ALLOWLIST=GITHUB_REPO_ALLOWLIST:latest,FIREBASE_API_KEY=FIREBASE_API_KEY:latest,FIREBASE_AUTH_DOMAIN=FIREBASE_AUTH_DOMAIN:latest,FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,FIREBASE_APP_ID=FIREBASE_APP_ID:latest,NEXT_PUBLIC_APP_URL=NEXT_PUBLIC_APP_URL:latest"
 ```
 
 `--allow-unauthenticated` is right here and is not a hole. The dashboard is a
@@ -513,7 +540,7 @@ gcloud run jobs deploy drift-worker \
   --parallelism=1 \
   --max-retries=0 \
   --execution-environment=gen2 \
-  --set-secrets="GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLOUD_PROJECT=GOOGLE_CLOUD_PROJECT:latest,FIRESTORE_DATABASE=FIRESTORE_DATABASE:latest,STORAGE_BUCKET=STORAGE_BUCKET:latest,GITHUB_TOKEN=GITHUB_TOKEN:latest,GITHUB_REPO_ALLOWLIST=GITHUB_REPO_ALLOWLIST:latest,PREVIEW_AUTH_COOKIE_VALUE=PREVIEW_AUTH_COOKIE_VALUE:latest,FIREBASE_API_KEY=FIREBASE_API_KEY:latest,FIREBASE_AUTH_DOMAIN=FIREBASE_AUTH_DOMAIN:latest,FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,FIREBASE_APP_ID=FIREBASE_APP_ID:latest,NEXT_PUBLIC_APP_URL=NEXT_PUBLIC_APP_URL:latest"
+  --set-secrets="GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLOUD_PROJECT=GOOGLE_CLOUD_PROJECT:latest,FIRESTORE_DATABASE=FIRESTORE_DATABASE:latest,STORAGE_BUCKET=STORAGE_BUCKET:latest,GITHUB_TOKEN=GITHUB_TOKEN:latest,GITHUB_APP_ID=GITHUB_APP_ID:latest,GITHUB_APP_PRIVATE_KEY=GITHUB_APP_PRIVATE_KEY:latest,GITHUB_REPO_ALLOWLIST=GITHUB_REPO_ALLOWLIST:latest,PREVIEW_AUTH_COOKIE_VALUE=PREVIEW_AUTH_COOKIE_VALUE:latest,FIREBASE_API_KEY=FIREBASE_API_KEY:latest,FIREBASE_AUTH_DOMAIN=FIREBASE_AUTH_DOMAIN:latest,FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,FIREBASE_APP_ID=FIREBASE_APP_ID:latest,NEXT_PUBLIC_APP_URL=NEXT_PUBLIC_APP_URL:latest"
 ```
 
 Four of those flags are decisions rather than defaults.
@@ -843,6 +870,10 @@ gcloud run jobs deploy drift-worker \
 
 | What you see | What it usually is |
 | --- | --- |
+| The dashboard is empty after separating accounts | A project created before `projects.userId` existed has no owner and is invisible. `pnpm adopt-projects --user <uid>` reports them, `--apply` hands them over. An unadopted project also blocks its repo from being added again, since a repo may only be watched once |
+| Every dashboard page 500s with `FAILED_PRECONDITION` | The `projects.userId + createdAt` composite index is missing or still `CREATING`. Step 4 declares it; `gcloud firestore indexes composite list` says which |
+| The repo picker is empty but the app is installed | The installation is not linked to the signed-in account. That link is written on the way back from GitHub, so an install done without going through Connect GitHub leaves nothing to read. Install again from the dialog |
+| Connect GitHub goes to GitHub and comes back to the wrong place | The app's Setup URL points at the other environment. One field, so a laptop and a deployed service cannot both hold it (step 6) |
 | The dashboard shows a page with no runs | The composite indexes in step 4 are still `CREATING`, or nothing has seeded a project |
 | `PERMISSION_DENIED` on Firestore in the job's log | `roles/datastore.user` did not land on `$SA_WORKER` |
 | The push endpoint answers 403 and logs `deploy.rejected` | The reason field says which of the three checks failed: the audience, the service account, or the signature. A different service account almost always means the subscription was created with the wrong `--push-auth-service-account` |
