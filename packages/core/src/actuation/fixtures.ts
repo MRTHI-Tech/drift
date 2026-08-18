@@ -25,6 +25,7 @@ export const PROJECT: Project = {
   previewUrl: "https://acme-preview.a.run.app",
   defaultBranch: "main",
   configPath: "drift.config.json",
+  installationId: null,
   createdAt: new Date("2026-08-01T00:00:00Z"),
   driftScore: 82,
   lastRunAt: new Date("2026-08-07T10:00:00Z"),

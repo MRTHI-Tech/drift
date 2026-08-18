@@ -133,6 +133,12 @@ export interface Project {
   defaultBranch: string
   /** Defaults to `drift.config.json`. */
   configPath: string
+  /**
+   * The GitHub App installation this project's repo was granted through, or
+   * null for a project watched through `GITHUB_TOKEN`. Null is not a
+   * misconfiguration: it is every project created before the app existed.
+   */
+  installationId: number | null
   createdAt: Date
   /** 0 to 100. */
   driftScore: number

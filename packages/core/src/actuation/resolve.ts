@@ -17,7 +17,7 @@
 
 import type { Octokit } from "@octokit/rest"
 
-import { createGitHubClient } from "../github"
+import { githubClientFor } from "../github"
 import { createRepositories, type Repositories } from "../repositories"
 import { refreshDriftScore, type DriftScoreRefresh } from "../score"
 import type { Convention, Finding, FindingStatus, Project, Resolution } from "../types"
@@ -409,7 +409,7 @@ async function actuate(input: ActuateInput): Promise<ActuateResult> {
 
   let octokit: Octokit
   try {
-    octokit = input.octokit ?? createGitHubClient()
+    octokit = input.octokit ?? githubClientFor(input.project.installationId)
   } catch (error) {
     const message = actuationError(error)
     input.logger.error("resolve.github_unavailable", { message })

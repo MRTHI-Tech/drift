@@ -23,6 +23,8 @@ export interface ProjectInput {
   previewUrl: string
   defaultBranch?: string
   configPath?: string
+  /** The installation the repo was picked from, when it was picked from one. */
+  installationId?: number | null
 }
 
 /** The same fields, trimmed and settled, as a project document will hold them. */
@@ -32,6 +34,7 @@ export interface NormalizedProjectInput {
   previewUrl: string
   defaultBranch: string
   configPath: string
+  installationId: number | null
 }
 
 /** Which input a problem belongs under. */
@@ -76,6 +79,7 @@ export function normalizeProjectInput(input: ProjectInput): NormalizeResult {
 
   const defaultBranch = (input.defaultBranch ?? "").trim() || DEFAULT_BRANCH
   const configPath = (input.configPath ?? "").trim() || DEFAULT_CONFIG_PATH
+  const installationId = input.installationId ?? null
 
   if (configPath.startsWith("/")) {
     issues.push({
@@ -88,7 +92,7 @@ export function normalizeProjectInput(input: ProjectInput): NormalizeResult {
 
   return {
     ok: true,
-    value: { name, repo, previewUrl, defaultBranch, configPath },
+    value: { name, repo, previewUrl, defaultBranch, configPath, installationId },
   }
 }
 

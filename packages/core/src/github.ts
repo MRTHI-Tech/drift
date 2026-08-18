@@ -221,6 +221,95 @@ export function githubAuthMode(
   return installationId !== null && config ? "app" : "token"
 }
 
+/** One installation of the app, and the repos it was granted. */
+export interface AppInstallation {
+  id: number
+  /** The user or organisation the app was installed on. */
+  account: string
+  /** `selected` when the installer picked repos, `all` when they did not. */
+  repositorySelection: string
+  /** `owner/name`, exactly the repos this installation may reach. */
+  repos: string[]
+}
+
+/**
+ * Where somebody is sent to install the app, and where they are sent to change
+ * which repos it can see. Derived from the app's own slug rather than written
+ * down anywhere, because a slug that is configured in two places is a slug that
+ * will one day differ between them.
+ */
+export async function appInstallUrl(config = githubAppConfig()): Promise<string> {
+  const { data } = await createAppClient(config).rest.apps.getAuthenticated()
+  if (!data?.slug) {
+    throw new GitHubError("GitHub did not name the app, so there is nowhere to install it.")
+  }
+  return `https://github.com/apps/${data.slug}/installations/new`
+}
+
+/**
+ * Every installation of the app, each with the repos it may reach.
+ *
+ * Asked of GitHub every time rather than stored. An installation is a grant a
+ * person made and can withdraw on GitHub without telling Drift, so a copy of it
+ * here would be a second truth that is wrong exactly when it matters. The same
+ * reasoning the default branch already gets: GitHub owns it, so GitHub is
+ * asked (`projects/create.ts`).
+ */
+export async function listAppInstallations(
+  config = githubAppConfig(),
+): Promise<AppInstallation[]> {
+  const app = createAppClient(config)
+
+  let installations
+  try {
+    installations = await app.paginate(app.rest.apps.listInstallations, { per_page: 100 })
+  } catch (cause) {
+    throw new GitHubError(`Could not read the app's installations. ${describe(cause)}`, { cause })
+  }
+
+  return Promise.all(
+    installations.map(async (installation) => ({
+      id: installation.id,
+      account:
+        installation.account && "login" in installation.account
+          ? installation.account.login
+          : "",
+      repositorySelection: installation.repository_selection,
+      repos: await installationRepos(installation.id, config),
+    })),
+  )
+}
+
+/** The repos one installation may reach, as `owner/name`. */
+export async function installationRepos(
+  installationId: number,
+  config = githubAppConfig(),
+): Promise<string[]> {
+  const scoped = createInstallationClient(installationId, config)
+
+  try {
+    const repos = await scoped.paginate(scoped.rest.apps.listReposAccessibleToInstallation, {
+      per_page: 100,
+    })
+    // The endpoint answers `{ total_count, repositories }`, and paginate has
+    // been known to hand back either the wrapper or the array depending on the
+    // page. Both are flattened here rather than trusted to be one shape.
+    return repos
+      .flatMap((entry) =>
+        entry && typeof entry === "object" && "repositories" in entry
+          ? ((entry as { repositories: { full_name: string }[] }).repositories ?? [])
+          : [entry as { full_name: string }],
+      )
+      .map((repo) => repo?.full_name)
+      .filter((name): name is string => typeof name === "string" && name.length > 0)
+  } catch (cause) {
+    throw new GitHubError(
+      `Could not read what installation ${installationId} may reach. ${describe(cause)}`,
+      { cause },
+    )
+  }
+}
+
 export interface FetchFileInput {
   /** `owner/name`. */
   repo: string

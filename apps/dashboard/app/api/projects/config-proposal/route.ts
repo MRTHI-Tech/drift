@@ -13,7 +13,7 @@
 
 import {
   composeConfigProposal,
-  createGitHubClient,
+  githubClientFor,
   createLogger,
   errorMessage,
   openConfigPullRequest,
@@ -36,7 +36,7 @@ export async function POST(request: Request): Promise<Response> {
   const rejected = repoRejection(body)
   if (rejected) return rejected
 
-  const octokit = createGitHubClient()
+  const octokit = githubClientFor(body.installationId ?? null)
   const input = inspectionTarget(body)
 
   try {

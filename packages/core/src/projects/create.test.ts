@@ -19,6 +19,7 @@ function existingProject(repo: string): Project {
     previewUrl: "https://woven-preview.a.run.app",
     defaultBranch: "main",
     configPath: "drift.config.json",
+    installationId: null,
     createdAt: new Date("2026-01-01"),
     driftScore: 12,
     lastRunAt: null,
@@ -43,6 +44,7 @@ describe("createProject", () => {
       previewUrl: "https://woven-preview.a.run.app",
       defaultBranch: "main",
       configPath: "drift.config.json",
+      installationId: null,
     })
     expect(repositories.stored.projects).toHaveLength(1)
   })

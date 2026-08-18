@@ -7,6 +7,30 @@
  * and the route handlers are what keep them true.
  */
 
+/** One installation of the GitHub App, as `/api/github/installations` answers. */
+export interface AppInstallation {
+  id: number
+  /** The user or organisation the app was installed on. */
+  account: string
+  /** `selected` when the installer picked repos, `all` when they did not. */
+  repositorySelection: string
+  /** `owner/name`, exactly the repos this installation may reach. */
+  repos: string[]
+}
+
+/**
+ * What the app can reach, and where to go to change it.
+ *
+ * `configured: false` is the deployment that has no app registered, which is
+ * not an error: the dialog falls back to a typed repo on `GITHUB_TOKEN`, which
+ * is what every project made before the app was on.
+ */
+export interface GitHubAccess {
+  configured: boolean
+  installUrl: string | null
+  installations: AppInstallation[]
+}
+
 /** Matches `CheckStatus` in `@drift/core`. `warn` does not block a save. */
 export type CheckStatus = "pass" | "warn" | "fail" | "skipped"
 

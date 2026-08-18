@@ -11,7 +11,7 @@
 import {
   branchCommit,
   composeRulesFile,
-  createGitHubClient,
+  githubClientFor,
   latestPerRoute,
   RULES_BRANCH,
   RULES_PATH,
@@ -113,7 +113,7 @@ export async function loadRulesFile(
   const content = await composeRulesFile({ project, repositories })
 
   try {
-    const commit = await branchCommit(createGitHubClient(), {
+    const commit = await branchCommit(githubClientFor(project.installationId), {
       repo: project.repo,
       branch: RULES_BRANCH,
     })

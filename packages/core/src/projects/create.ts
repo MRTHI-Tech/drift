@@ -100,6 +100,7 @@ function newProject(value: NormalizedProjectInput): Omit<Project, "id"> {
     previewUrl: value.previewUrl,
     defaultBranch: value.defaultBranch,
     configPath: value.configPath,
+    installationId: value.installationId,
     createdAt: new Date(),
     driftScore: 0,
     lastRunAt: null,

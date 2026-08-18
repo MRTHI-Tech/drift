@@ -9,6 +9,7 @@ const project = {
   previewUrl: "https://woven-preview.a.run.app",
   defaultBranch: "main",
   configPath: "drift.config.json",
+  installationId: null,
 }
 
 const config = JSON.stringify({

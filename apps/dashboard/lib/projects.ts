@@ -13,7 +13,8 @@
 
 import {
   composeConfigProposal,
-  createGitHubClient,
+  githubAuthMode,
+  githubClientFor,
   createLogger,
   createProject,
   createRepositories,
@@ -37,6 +38,11 @@ export interface ProjectRequestBody {
   name?: string
   previewUrl?: string
   configPath?: string
+  /**
+   * The GitHub App installation the repo was picked from, or null when it was
+   * typed and the deployment is still on `GITHUB_TOKEN`.
+   */
+  installationId?: number | null
   /** Create only: also propose a `drift.config.json` when the repo has none. */
   proposeConfig?: boolean
 }
@@ -60,6 +66,7 @@ export async function readProjectBody(request: Request): Promise<ProjectRequestB
     name: typeof record.name === "string" ? record.name : undefined,
     previewUrl: typeof record.previewUrl === "string" ? record.previewUrl : undefined,
     configPath: typeof record.configPath === "string" ? record.configPath : undefined,
+    installationId: typeof record.installationId === "number" ? record.installationId : null,
     proposeConfig: record.proposeConfig === true,
   }
 }
@@ -76,6 +83,7 @@ export function inspectionTarget(body: ProjectRequestBody): NormalizedProjectInp
     // Replaced by whatever GitHub reports, inside preflight.
     defaultBranch: "main",
     configPath: (body.configPath ?? "").trim() || DEFAULT_CONFIG_PATH,
+    installationId: body.installationId ?? null,
   }
 }
 
@@ -95,8 +103,8 @@ export interface Inspection extends PreflightResult {
  * file somebody copies by hand is worth as much as one in a pull request.
  */
 export async function inspectRepo(body: ProjectRequestBody): Promise<Inspection> {
-  const octokit = createGitHubClient()
   const input = inspectionTarget(body)
+  const octokit = githubClientFor(input.installationId)
 
   const result = await preflight({ octokit, input })
 
@@ -143,8 +151,18 @@ export async function createWatchedProject(body: ProjectRequestBody): Promise<Cr
   const repositories = createRepositories()
   const logger = createLogger()
 
-  const octokit = createGitHubClient()
   const input = inspectionTarget(body)
+
+  // The installation the repo was picked from, when it was picked from one.
+  // Logged rather than assumed: a project quietly created on the fallback token
+  // when it should have been on an installation is the one failure here that
+  // looks like a success (AGENTS.md section 8).
+  const octokit = githubClientFor(input.installationId)
+  logger.log("project.github_auth", {
+    repo: input.repo,
+    mode: githubAuthMode(input.installationId),
+    installationId: input.installationId,
+  })
 
   // GitHub owns the default branch. Asked again here rather than trusted from
   // an earlier inspection, because a body is a body.
@@ -158,6 +176,7 @@ export async function createWatchedProject(body: ProjectRequestBody): Promise<Cr
       previewUrl: body.previewUrl ?? "",
       defaultBranch,
       configPath: input.configPath,
+      installationId: input.installationId,
     },
     repositories,
     logger,

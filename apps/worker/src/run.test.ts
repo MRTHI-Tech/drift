@@ -14,6 +14,7 @@ const project: Project = {
   previewUrl: "https://preview.example.com",
   defaultBranch: "main",
   configPath: "drift.config.json",
+  installationId: null,
   createdAt: new Date("2026-08-01T00:00:00Z"),
   driftScore: 0,
   lastRunAt: null,

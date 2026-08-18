@@ -15,7 +15,7 @@ import {
   actuationCandidates,
   buildSignature,
   countTokens,
-  createGitHubClient,
+  githubClientFor,
   createRepositories,
   diffScreenTokens,
   fetchDriftConfig,
@@ -78,7 +78,7 @@ export interface RunSummary {
 }
 
 /** The authenticated GitHub client, without reaching past `@drift/core` for its type. */
-type GitHubClient = ReturnType<typeof createGitHubClient>
+type GitHubClient = ReturnType<typeof githubClientFor>
 
 export async function runProject(options: RunOptions): Promise<RunSummary> {
   const dryRun = options.dryRun ?? false
@@ -108,7 +108,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
   })
 
   try {
-    const github = createGitHubClient()
+    const github = githubClientFor(project.installationId)
     const config = await loadConfig(github, project, logger)
     const settings = renderSettings(project.previewUrl, config.authCookieName)
     const tokens = await loadTokens(github, project, config, logger)

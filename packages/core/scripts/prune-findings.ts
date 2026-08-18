@@ -28,7 +28,7 @@ import { parseArgs } from "node:util"
 import { diffScreenTokens } from "../src/analysis/token-diff"
 import { tokenDedupeKey } from "../src/analysis/findings"
 import { resolveFinding } from "../src/actuation/resolve"
-import { createGitHubClient, fetchDriftConfig, fetchTokenDefinitions } from "../src/github"
+import { githubClientFor, fetchDriftConfig, fetchTokenDefinitions } from "../src/github"
 import { getDriftFirestore } from "../src/firestore"
 import { createRepositories, type Repositories } from "../src/repositories"
 import { latestPerRoute } from "../src/analysis/screens"
@@ -121,7 +121,7 @@ async function currentCandidateKeys(
   project: Project,
   repositories: Repositories,
 ): Promise<CurrentAnswers | null> {
-  const github = createGitHubClient()
+  const github = githubClientFor(project.installationId)
 
   const config = await fetchDriftConfig(github, project)
   if (!config.tokenDefinitionsPath) {

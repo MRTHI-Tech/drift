@@ -16,7 +16,7 @@
  */
 
 import {
-  createGitHubClient,
+  githubClientFor,
   syncRulesFile,
   type Convention,
   type ConventionStatus,
@@ -94,7 +94,7 @@ async function regenerateRules(
 
   try {
     const result = await syncRulesFile({
-      octokit: createGitHubClient(),
+      octokit: githubClientFor(project.installationId),
       project,
       repositories: repos,
     })

@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --import tsx
 import { parseArgs } from "node:util"
 
-import { createGitHubClient, createRepositories, syncRulesFile } from "@drift/core"
+import { githubClientFor, createRepositories, syncRulesFile } from "@drift/core"
 import { chromium } from "playwright"
 
 import { createLogger, errorMessage } from "./logger"
@@ -179,7 +179,7 @@ async function rules(project: string | undefined, dryRun: boolean): Promise<numb
   }
 
   const result = await syncRulesFile({
-    octokit: createGitHubClient(),
+    octokit: githubClientFor(found.installationId),
     project: found,
     repositories,
     logger: createLogger({ projectId }),

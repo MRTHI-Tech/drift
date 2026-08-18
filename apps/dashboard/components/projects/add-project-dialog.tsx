@@ -29,7 +29,9 @@ import {
   RiCheckLine,
   RiCloseLine,
   RiErrorWarningLine,
+  RiExternalLinkLine,
   RiFileCopyLine,
+  RiGithubFill,
   RiGitPullRequestLine,
   RiLoader4Line,
   RiSubtractLine,
@@ -50,11 +52,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   fieldError,
   responseMessage,
+  type AppInstallation,
   type CheckStatus,
   type CreatedProject,
+  type GitHubAccess,
   type Inspection,
   type ProposedConfig,
 } from "@/lib/project-result"
@@ -86,6 +91,9 @@ export function AddProjectDialog({
 
   const [open, setOpen] = React.useState(false)
   const [repo, setRepo] = React.useState("")
+  const [access, setAccess] = React.useState<GitHubAccess | null>(null)
+  const [loadingAccess, setLoadingAccess] = React.useState(false)
+  const [installationId, setInstallationId] = React.useState<number | null>(null)
   const [previewUrl, setPreviewUrl] = React.useState("")
   const [name, setName] = React.useState("")
   const [nameEdited, setNameEdited] = React.useState(false)
@@ -106,6 +114,7 @@ export function AddProjectDialog({
 
   function reset() {
     setRepo("")
+    setInstallationId(null)
     setPreviewUrl("")
     setName("")
     setNameEdited(false)
@@ -118,11 +127,15 @@ export function AddProjectDialog({
     inspected.current = ""
   }
 
-  async function inspect(nextRepo = repo, nextPreviewUrl = previewUrl) {
+  async function inspect(
+    nextRepo = repo,
+    nextPreviewUrl = previewUrl,
+    nextInstallationId = installationId,
+  ) {
     const trimmed = nextRepo.trim()
     if (!trimmed) return
 
-    const key = `${trimmed}|${nextPreviewUrl.trim()}`
+    const key = `${trimmed}|${nextPreviewUrl.trim()}|${nextInstallationId ?? ""}`
     if (key === inspected.current) return
     inspected.current = key
 
@@ -134,7 +147,11 @@ export function AddProjectDialog({
       const response = await fetch("/api/projects/inspect", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ repo: trimmed, previewUrl: nextPreviewUrl.trim() }),
+        body: JSON.stringify({
+          repo: trimmed,
+          previewUrl: nextPreviewUrl.trim(),
+          installationId: nextInstallationId,
+        }),
       })
       const payload: unknown = await response.json().catch(() => null)
 
@@ -153,7 +170,7 @@ export function AddProjectDialog({
       // see what Drift made of it rather than have to trust that it read it.
       if (result.repoSlug && result.repoSlug !== nextRepo) {
         setRepo(result.repoSlug)
-        inspected.current = `${result.repoSlug}|${nextPreviewUrl.trim()}`
+        inspected.current = `${result.repoSlug}|${nextPreviewUrl.trim()}|${nextInstallationId ?? ""}`
       }
 
       if (!nameEdited && result.repoSlug) {
@@ -165,6 +182,77 @@ export function AddProjectDialog({
     } finally {
       setInspecting(false)
     }
+  }
+
+  /**
+   * What the app can reach. Asked on open, and again after somebody comes back
+   * from installing, because that is exactly when the answer has changed.
+   */
+  const loadAccess = React.useCallback(async (): Promise<GitHubAccess | null> => {
+    setLoadingAccess(true)
+    try {
+      const response = await fetch("/api/github/installations")
+      if (!response.ok) {
+        // A deployment whose app will not answer still adds projects on the
+        // token, so this is not shown as a failure. The repo field comes back.
+        setAccess({ configured: false, installUrl: null, installations: [] })
+        return null
+      }
+      const payload = (await response.json()) as GitHubAccess
+      setAccess(payload)
+      return payload
+    } catch {
+      setAccess({ configured: false, installUrl: null, installations: [] })
+      return null
+    } finally {
+      setLoadingAccess(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (open && !access) void loadAccess()
+  }, [open, access, loadAccess])
+
+  /**
+   * GitHub sends people back to `/?github=connected&installation_id=...` after
+   * they install. Reopen on that, so installing feels like one flow rather than
+   * like leaving and being dropped back at the start.
+   */
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("github") !== "connected") return
+
+    const raw = params.get("installation_id")
+    const returned = raw && /^\d+$/.test(raw) ? Number(raw) : null
+
+    setOpen(true)
+    void loadAccess().then((fresh) => {
+      // Preselect when the installation granted exactly one repo: there is
+      // nothing to choose, and making somebody pick from a list of one is a
+      // question with one answer.
+      const installation = fresh?.installations.find((entry) => entry.id === returned)
+      if (installation?.repos.length === 1) {
+        pick(installation.id, installation.repos[0] as string)
+      }
+    })
+
+    // The query is a message, not a place. Take it out of the address bar so a
+    // refresh does not replay it.
+    const url = new URL(window.location.href)
+    url.searchParams.delete("github")
+    url.searchParams.delete("installation_id")
+    window.history.replaceState({}, "", url.toString())
+    // Runs once, on mount, because that is when a redirect lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** Chooses a repo out of an installation, and checks it straight away. */
+  function pick(nextInstallationId: number, nextRepo: string) {
+    setInstallationId(nextInstallationId)
+    setRepo(nextRepo)
+    setFieldProblem(null)
+    if (!nameEdited) setName(suggestName(nextRepo))
+    void inspect(nextRepo, previewUrl, nextInstallationId)
   }
 
   /** Forces the next inspect to run even though nothing in the form changed. */
@@ -183,7 +271,7 @@ export function AddProjectDialog({
       const response = await fetch("/api/projects/config-proposal", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ repo: repo.trim() }),
+        body: JSON.stringify({ repo: repo.trim(), installationId }),
       })
       const payload: unknown = await response.json().catch(() => null)
 
@@ -210,7 +298,12 @@ export function AddProjectDialog({
       const response = await fetch("/api/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ repo: repo.trim(), previewUrl: previewUrl.trim(), name: name.trim() }),
+        body: JSON.stringify({
+          repo: repo.trim(),
+          previewUrl: previewUrl.trim(),
+          name: name.trim(),
+          installationId,
+        }),
       })
       const payload: unknown = await response.json().catch(() => null)
 
@@ -286,14 +379,14 @@ export function AddProjectDialog({
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="repo">Repo</Label>
-                <Input
-                  id="repo"
-                  value={repo}
-                  placeholder="owner/name"
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(event) => setRepo(event.target.value)}
-                  onBlur={() => void inspect()}
+                <RepoField
+                  access={access}
+                  loading={loadingAccess}
+                  repo={repo}
+                  installationId={installationId}
+                  onPick={pick}
+                  onType={(value) => setRepo(value)}
+                  onTypeDone={() => void inspect()}
                 />
                 {fieldProblem ? (
                   <p className="text-xs leading-relaxed text-destructive">{fieldProblem}</p>
@@ -620,4 +713,157 @@ function suggestName(repo: string): string {
   if (words.length === 0) return ""
   const [first = "", ...rest] = words
   return [(first[0]?.toUpperCase() ?? "") + first.slice(1), ...rest].join(" ")
+}
+
+
+/**
+ * Which repo, asked the way the deployment can answer it.
+ *
+ * Three states, and they are not three designs of the same thing. With the app
+ * installed, the repos are GitHub's answer to what this installation may reach,
+ * so they are shown and picked rather than typed: there is nothing to get
+ * wrong, and a repo that is not on the list is not a typo but a repo that was
+ * not granted. With the app configured and installed nowhere, the only useful
+ * thing on screen is the way to install it. With no app at all, the field is
+ * the one that has always been here, on `GITHUB_TOKEN`.
+ */
+function RepoField({
+  access,
+  loading,
+  repo,
+  installationId,
+  onPick,
+  onType,
+  onTypeDone,
+}: {
+  access: GitHubAccess | null
+  loading: boolean
+  repo: string
+  installationId: number | null
+  onPick: (installationId: number, repo: string) => void
+  onType: (value: string) => void
+  onTypeDone: () => void
+}) {
+  if (loading && !access) {
+    return (
+      <p className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+        <RiLoader4Line className="size-4 animate-spin" />
+        Reading what Drift can reach.
+      </p>
+    )
+  }
+
+  // No app registered for this deployment. The field that has always been here.
+  if (!access?.configured) {
+    return (
+      <Input
+        id="repo"
+        value={repo}
+        placeholder="owner/name"
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(event) => onType(event.target.value)}
+        onBlur={onTypeDone}
+      />
+    )
+  }
+
+  const granted = access.installations.filter((installation) => installation.repos.length > 0)
+
+  if (granted.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Drift has no access to any repository yet. Install it on GitHub and pick the repos it
+          may watch. You choose which; Drift never sees the rest.
+        </p>
+        <ConnectButton url={access.installUrl} label="Connect GitHub" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <ScrollArea className="max-h-52 rounded-none border border-input">
+        <div className="flex flex-col">
+          {granted.map((installation) => (
+            <InstallationRepos
+              key={installation.id}
+              installation={installation}
+              selectedRepo={repo}
+              selectedInstallationId={installationId}
+              onPick={onPick}
+            />
+          ))}
+        </div>
+      </ScrollArea>
+      <ConnectButton url={access.installUrl} label="Add or remove repos on GitHub" quiet />
+    </div>
+  )
+}
+
+/** One installation, headed by the account it was installed on. */
+function InstallationRepos({
+  installation,
+  selectedRepo,
+  selectedInstallationId,
+  onPick,
+}: {
+  installation: AppInstallation
+  selectedRepo: string
+  selectedInstallationId: number | null
+  onPick: (installationId: number, repo: string) => void
+}) {
+  return (
+    <div className="flex flex-col">
+      <p className="border-b border-input bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
+        {installation.account}
+      </p>
+      {installation.repos.map((full) => {
+        const chosen = selectedRepo === full && selectedInstallationId === installation.id
+        return (
+          <button
+            key={full}
+            type="button"
+            aria-pressed={chosen}
+            onClick={() => onPick(installation.id, full)}
+            className={`flex items-center justify-between gap-2 px-2.5 py-2 text-left text-xs transition-colors ${
+              chosen ? "bg-accent text-accent-foreground" : "hover:bg-muted/60"
+            }`}
+          >
+            <span className="truncate">{full}</span>
+            {chosen ? <RiCheckLine className="size-4 shrink-0" /> : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Out to GitHub and back. A new tab would lose the return trip. */
+function ConnectButton({
+  url,
+  label,
+  quiet = false,
+}: {
+  url: string | null
+  label: string
+  quiet?: boolean
+}) {
+  if (!url) return null
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={quiet ? "ghost" : "default"}
+      className={quiet ? "h-7 self-start px-1.5 text-muted-foreground" : "self-start"}
+      onClick={() => {
+        window.location.href = url
+      }}
+    >
+      {quiet ? <RiExternalLinkLine /> : <RiGithubFill />}
+      {label}
+    </Button>
+  )
 }

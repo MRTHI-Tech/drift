@@ -18,8 +18,26 @@ describe("normalizeProjectInput", () => {
         ...valid,
         defaultBranch: "main",
         configPath: "drift.config.json",
+        installationId: null,
       },
     })
+  })
+
+  /**
+   * A project watched through `GITHUB_TOKEN` has no installation, and that is
+   * the state every project created before the app existed is in. Null is
+   * therefore the default rather than a problem to report.
+   */
+  it("defaults the installation to null, which is the token path", () => {
+    const result = normalizeProjectInput(valid)
+
+    expect(result.ok && result.value.installationId).toBeNull()
+  })
+
+  it("carries the installation through when the repo was picked from one", () => {
+    const result = normalizeProjectInput({ ...valid, installationId: 154734085 })
+
+    expect(result.ok && result.value.installationId).toBe(154734085)
   })
 
   it("trims every field before it is stored", () => {

@@ -20,6 +20,7 @@ const project: Project = {
   previewUrl: "https://woven-preview.a.run.app",
   defaultBranch: "main",
   configPath: "drift.config.json",
+  installationId: null,
   createdAt: new Date("2026-08-01"),
   driftScore: 12,
   lastRunAt: new Date("2026-08-08"),
