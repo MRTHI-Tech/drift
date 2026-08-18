@@ -12,17 +12,19 @@ import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
 
 import { PROJECT_COOKIE, repositories } from "@/lib/data/workspace"
+import { ownedProject } from "@/lib/ownership"
 import { requireSession } from "@/lib/session"
 
 /** A year: a project choice should outlive a session. */
 const CHOICE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60
 
 export async function chooseProject(projectId: string): Promise<void> {
-  await requireSession()
+  const session = await requireSession()
 
-  // Only a project that exists. A cookie naming anything else would send every
-  // page back to the first project without saying why.
-  const project = await repositories().projects.get(projectId)
+  // Only a project that exists and is this person's. A cookie naming anything
+  // else would send every page back to the first project without saying why,
+  // and a cookie naming somebody else's would be worse than that.
+  const project = await ownedProject(projectId, session.uid, repositories())
   if (!project) return
 
   const store = await cookies()

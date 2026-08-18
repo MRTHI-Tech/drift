@@ -28,7 +28,7 @@ export default async function WatchLayout({
   const workspace = await loadWorkspace()
 
   if (!workspace) {
-    return <NoProjects email={session.email} onCreated={chooseProject} />
+    return <NoProjects email={session.email} uid={session.uid} onCreated={chooseProject} />
   }
 
   const trend = await loadScoreTrend(workspace.current, workspace.repositories)

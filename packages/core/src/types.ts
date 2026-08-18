@@ -126,6 +126,16 @@ export interface Signature {
 
 export interface Project {
   id: string
+  /**
+   * Firebase uid of the person who created it. Keyed on the uid rather than
+   * the address, because an address changes and a uid does not.
+   *
+   * Drift never decides who owns a repo: GitHub decided that when somebody
+   * installed the app on it, and the picker can only offer what their own
+   * installation grants. This field is only the memory of who made the
+   * project, which is what every read is checked against.
+   */
+  userId: string
   name: string
   /** owner/name */
   repo: string
@@ -143,6 +153,24 @@ export interface Project {
   /** 0 to 100. */
   driftScore: number
   lastRunAt: Date | null
+}
+
+/**
+ * One installation of the GitHub App, tied to the person who connected it.
+ *
+ * Only the link is stored. What the installation *reaches* is asked of GitHub
+ * every time, because a person can change that on GitHub without telling Drift
+ * (AGENTS.md section 2). GitHub knows who installed what on GitHub; it has no
+ * idea who that is in Drift, and this is the only place that mapping exists.
+ */
+export interface Installation {
+  /** The document id is the GitHub installation id, as a string. */
+  id: string
+  installationId: number
+  userId: string
+  /** The user or organisation it was installed on, for showing in a list. */
+  account: string
+  connectedAt: Date
 }
 
 export interface Run {

@@ -6,6 +6,7 @@ describe("constants", () => {
   it("names every collection locked in AGENTS.md section 2", () => {
     expect(Object.values(COLLECTIONS)).toEqual([
       "projects",
+      "installations",
       "runs",
       "screens",
       "archetypes",

@@ -6,7 +6,7 @@ import { startFirstRun, workerCommand } from "./first-run"
 
 const project: Project = {
   id: "project-1",
-  name: "Woven",
+  userId: "user1",  name: "Woven",
   repo: "MRTHI-Tech/woven",
   previewUrl: "https://woven-preview.a.run.app",
   defaultBranch: "main",

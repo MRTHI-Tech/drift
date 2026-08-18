@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { normalizeProjectInput, normalizeRepo, projectNameFromRepo } from "./input"
 
 const valid = {
-  name: "Woven",
+  userId: "user1",  name: "Woven",
   repo: "MRTHI-Tech/woven",
   previewUrl: "https://woven-preview.a.run.app",
 }
@@ -42,20 +42,20 @@ describe("normalizeProjectInput", () => {
 
   it("trims every field before it is stored", () => {
     const result = normalizeProjectInput({
-      name: "  Woven  ",
+      userId: "user1",      name: "  Woven  ",
       repo: "  MRTHI-Tech/woven  ",
       previewUrl: "  https://woven.example  ",
     })
 
     expect(result.ok && result.value).toMatchObject({
-      name: "Woven",
+      userId: "user1",      name: "Woven",
       repo: "MRTHI-Tech/woven",
       previewUrl: "https://woven.example",
     })
   })
 
   it("reports every bad field at once rather than the first", () => {
-    const result = normalizeProjectInput({ name: "", repo: "", previewUrl: "" })
+    const result = normalizeProjectInput({ userId: "user1", name: "", repo: "", previewUrl: "" })
 
     expect(result.ok).toBe(false)
     expect(!result.ok && result.issues.map((issue) => issue.field)).toEqual([

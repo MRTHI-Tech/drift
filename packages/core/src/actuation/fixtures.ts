@@ -20,7 +20,7 @@ export const NEAREST_TOKEN = { name: "colors.danger.500", value: "#EF4444" }
 
 export const PROJECT: Project = {
   id: "proj1",
-  name: "Acme",
+  userId: "user1",  name: "Acme",
   repo: "acme/web",
   previewUrl: "https://acme-preview.a.run.app",
   defaultBranch: "main",

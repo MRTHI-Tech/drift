@@ -17,6 +17,8 @@ import { DEFAULT_BRANCH, DEFAULT_CONFIG_PATH } from "../constants"
 
 /** The fields a person fills in. The last two are defaulted, not asked. */
 export interface ProjectInput {
+  /** Firebase uid of whoever is creating it. Never typed; taken from the session. */
+  userId: string
   name: string
   /** `owner/name`, or a GitHub URL that carries one. */
   repo: string
@@ -29,6 +31,7 @@ export interface ProjectInput {
 
 /** The same fields, trimmed and settled, as a project document will hold them. */
 export interface NormalizedProjectInput {
+  userId: string
   name: string
   repo: string
   previewUrl: string
@@ -69,6 +72,13 @@ export function normalizeProjectInput(input: ProjectInput): NormalizeResult {
     issues.push({ field: "name", message: "A name is required." })
   }
 
+  // Not a field anybody fills in, so not a field anybody is told about: an
+  // absent uid is a caller that forgot the session, not a form to correct.
+  const userId = input.userId.trim()
+  if (!userId) {
+    throw new Error("A project needs the uid of whoever is creating it.")
+  }
+
   const previewUrl = input.previewUrl.trim()
   if (!previewUrl) {
     issues.push({ field: "previewUrl", message: "A preview URL is required." })
@@ -92,7 +102,7 @@ export function normalizeProjectInput(input: ProjectInput): NormalizeResult {
 
   return {
     ok: true,
-    value: { name, repo, previewUrl, defaultBranch, configPath, installationId },
+    value: { userId, name, repo, previewUrl, defaultBranch, configPath, installationId },
   }
 }
 

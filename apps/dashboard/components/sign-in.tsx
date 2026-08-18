@@ -65,9 +65,15 @@ export function SignIn({
 }: {
   config: FirebaseClientConfig
   /**
-   * Whether to offer the anonymous button. Development only: an anonymous
-   * session can resolve findings and open pull requests against the watched
-   * repo, so it must never be reachable on a deployed origin.
+   * Whether to offer the anonymous button. Development only, and never
+   * reachable on a deployed origin: an anonymous session can resolve findings
+   * and open pull requests against a watched repo.
+   *
+   * It was nearly deleted when Google sign-in landed. It stays because
+   * separating accounts (AGENTS.md section 9) gave it a second job: every
+   * anonymous sign-in is a new uid, and a new uid is now a brand new empty
+   * Drift. So this is the way to walk the first-run path — no projects, no
+   * GitHub connected — without needing a second Google account to do it with.
    */
   allowAnonymous: boolean
 }) {
@@ -146,10 +152,10 @@ export function SignIn({
           </Button>
 
           <p className="text-xs leading-relaxed text-muted-foreground">
-            An anonymous session can resolve findings and open pull requests
-            against the watched repo, so this button is only built in
-            development. AGENTS.md section 1 says Google only; take it out once
-            Google sign-in works.
+            Signs in as a new account every time, so this is how to see what a
+            first-time user sees: no projects, no GitHub connected. Built in
+            development only, because an anonymous session can resolve findings
+            and open pull requests against a watched repo.
           </p>
         </>
       ) : null}

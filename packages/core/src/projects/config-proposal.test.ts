@@ -6,7 +6,7 @@ import { RepoNotAllowedError } from "../github"
 import { CONFIG_BRANCH, composeConfigProposal, openConfigPullRequest } from "./config-proposal"
 
 const project = {
-  name: "Woven",
+  userId: "user1",  name: "Woven",
   repo: "MRTHI-Tech/woven",
   previewUrl: "https://woven-preview.a.run.app",
   defaultBranch: "main",

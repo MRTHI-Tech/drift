@@ -68,6 +68,14 @@ export function fakeRepositories(seed: FakeSeed = {}): FakeRepositories {
   return {
     stored,
 
+    // Nothing in actuation reads an installation: the credential is chosen
+    // before any of this is called. Present so the shape matches.
+    installations: {
+      async listForUser() {
+        return []
+      },
+    } as unknown as Repositories["installations"],
+
     projects: {
       async get(id) {
         return find(stored.projects, id)

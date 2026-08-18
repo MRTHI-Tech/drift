@@ -23,7 +23,7 @@ import {
 } from "@drift/core"
 
 import { repositories } from "@/lib/data/workspace"
-import { requireApiSession } from "@/lib/session"
+import { apiOwner, notYours, ownedVia } from "@/lib/ownership"
 
 export type ConventionAction = "promote" | "remove"
 
@@ -42,18 +42,18 @@ export async function handleConventionAction(
   context: ConventionParams,
   action: ConventionAction
 ): Promise<Response> {
-  const gate = await requireApiSession()
+  const gate = await apiOwner()
   if (gate.response) return gate.response
 
   const { conventionId } = await context.params
-  const repos = repositories()
+  const repos = gate.repositories
 
   const convention = await repos.conventions.get(conventionId)
-  if (!convention) {
-    return Response.json(
-      { error: `There is no convention ${conventionId}.` },
-      { status: 404 }
-    )
+
+  // Promoting or removing a convention rewrites the rules file in a watched
+  // repo, so this is checked before the convention is even reported to exist.
+  if (!convention || !(await ownedVia(convention, gate.userId, repos))) {
+    return notYours()
   }
 
   const project = await repos.projects.get(convention.projectId)

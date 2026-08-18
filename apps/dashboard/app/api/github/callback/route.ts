@@ -17,7 +17,7 @@
 
 import { NextResponse } from "next/server"
 
-import { githubAppConfig, listAppInstallations } from "@drift/core"
+import { createRepositories, githubAppConfig, listAppInstallations } from "@drift/core"
 
 import { readSession } from "@/lib/session"
 
@@ -56,10 +56,20 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const installations = await listAppInstallations(config)
-    if (!installations.some((installation) => installation.id === installationId)) {
+    const found = installations.find((installation) => installation.id === installationId)
+    if (!found) {
       home.searchParams.set("github", "unknown_installation")
       return NextResponse.redirect(home)
     }
+
+    // The one fact GitHub cannot answer: whose Drift account this grant
+    // belongs to. Recorded here, on the way back from GitHub, because this is
+    // the only moment both halves are known at once.
+    await createRepositories().installations.connect({
+      installationId,
+      userId: session.uid,
+      account: found.account,
+    })
   } catch {
     home.searchParams.set("github", "unreachable")
     return NextResponse.redirect(home)

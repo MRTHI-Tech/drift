@@ -13,13 +13,13 @@
 
 import { appInstallUrl, errorMessage, githubAppConfig, listAppInstallations } from "@drift/core"
 
-import { requireApiSession } from "@/lib/session"
+import { apiOwner } from "@/lib/ownership"
 
 // firebase-admin and Octokit both need Node, not the edge runtime.
 export const runtime = "nodejs"
 
 export async function GET(): Promise<Response> {
-  const gate = await requireApiSession()
+  const gate = await apiOwner()
   if (gate.response) return gate.response
 
   const config = githubAppConfig()
@@ -28,10 +28,19 @@ export async function GET(): Promise<Response> {
   }
 
   try {
-    const [installUrl, installations] = await Promise.all([
+    const [installUrl, all, mine] = await Promise.all([
       appInstallUrl(config),
       listAppInstallations(config),
+      gate.repositories.installations.listForUser(gate.userId),
     ])
+
+    // GitHub answers with every installation of the app, across every account
+    // that ever installed it. Which of them are this person's is the one thing
+    // GitHub cannot know, so it is read from the link recorded at connect time
+    // and used to narrow what GitHub said (AGENTS.md section 2).
+    const ours = new Set(mine.map((installation) => installation.installationId))
+    const installations = all.filter((installation) => ours.has(installation.id))
+
     return Response.json({ configured: true, installUrl, installations })
   } catch (error) {
     // The app is configured but GitHub would not answer: about this deployment

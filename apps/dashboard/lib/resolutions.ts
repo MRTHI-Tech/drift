@@ -23,7 +23,7 @@ import {
   type ResolveFindingResult,
 } from "@drift/core"
 
-import { requireApiSession } from "@/lib/session"
+import { apiOwner, notYours, ownedVia } from "@/lib/ownership"
 
 /** The dynamic segment every resolution route carries. */
 export interface FindingParams {
@@ -47,11 +47,20 @@ export async function handleResolution(
   context: FindingParams,
   action: ResolutionAction
 ): Promise<Response> {
-  const gate = await requireApiSession()
+  const gate = await apiOwner()
   if (gate.response) return gate.response
 
   const { findingId } = await context.params
   const body = await readBody(request)
+
+  // Before anything is resolved, and before a pull request could be opened
+  // against somebody's repository: is this finding on a project this person
+  // made. A finding that is not there and a finding that is not theirs answer
+  // the same way.
+  const finding = await gate.repositories.findings.get(findingId)
+  if (!(await ownedVia(finding, gate.userId, gate.repositories))) {
+    return notYours()
+  }
 
   try {
     const result = await resolveFinding({

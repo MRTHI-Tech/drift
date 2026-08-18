@@ -19,6 +19,8 @@ import {
 } from "@drift/core"
 import { cookies } from "next/headers"
 
+import { requireSession } from "@/lib/session"
+
 /** Cookie holding the project the switcher last chose. */
 export const PROJECT_COOKIE = "drift_project"
 
@@ -47,10 +49,19 @@ export function repositories(): Repositories {
  * which is a state the shell shows rather than an error.
  */
 export async function loadWorkspace(): Promise<Workspace | null> {
+  // The session is read here rather than passed in, so that every page is
+  // scoped by construction. A page that forgot to thread a uid through would
+  // be a page showing somebody else's product, and it would look fine.
+  const session = await requireSession()
   const repos = repositories()
-  const projects = await repos.projects.list()
+
+  // Only this person's. `list()` still exists for the worker and the deploy
+  // webhook, which run below the session; nothing rendered may call it.
+  const projects = await repos.projects.listForUser(session.uid)
   if (projects.length === 0) return null
 
+  // A cookie is something a browser sends, so the id in it is checked against
+  // this person's projects rather than looked up on its own.
   const chosen = (await cookies()).get(PROJECT_COOKIE)?.value
   const current =
     projects.find((project) => project.id === chosen) ?? projects[0]

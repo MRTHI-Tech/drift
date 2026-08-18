@@ -4,6 +4,7 @@ import { getDriftFirestore } from "../firestore"
 import { createArchetypeRepository, type ArchetypeRepository } from "./archetypes"
 import { createConventionRepository, type ConventionRepository } from "./conventions"
 import { createFindingRepository, type FindingRepository } from "./findings"
+import { createInstallationRepository, type InstallationRepository } from "./installations"
 import { createProjectRepository, type ProjectRepository } from "./projects"
 import { createResolutionRepository, type ResolutionRepository } from "./resolutions"
 import { createRunRepository, type RunRepository } from "./runs"
@@ -14,6 +15,7 @@ export type { Entity, EntityPatch, NewEntity } from "./document"
 export type { ArchetypeRepository } from "./archetypes"
 export type { ConventionRepository } from "./conventions"
 export type { FindingRepository, FindingWriteResult } from "./findings"
+export type { InstallationRepository } from "./installations"
 export type { ProjectRepository } from "./projects"
 export type { ResolutionRepository } from "./resolutions"
 export type { RunRepository } from "./runs"
@@ -23,6 +25,7 @@ export {
   createArchetypeRepository,
   createConventionRepository,
   createFindingRepository,
+  createInstallationRepository,
   createProjectRepository,
   createResolutionRepository,
   createRunRepository,
@@ -32,6 +35,7 @@ export {
 /** One repository per collection, all pointed at the same database. */
 export interface Repositories {
   projects: ProjectRepository
+  installations: InstallationRepository
   runs: RunRepository
   screens: ScreenRepository
   archetypes: ArchetypeRepository
@@ -44,6 +48,7 @@ export interface Repositories {
 export function createRepositories(db: Firestore = getDriftFirestore()): Repositories {
   return {
     projects: createProjectRepository(db),
+    installations: createInstallationRepository(db),
     runs: createRunRepository(db),
     screens: createScreenRepository(db),
     archetypes: createArchetypeRepository(db),

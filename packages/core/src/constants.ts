@@ -3,6 +3,7 @@ import type { RunTrigger, Viewport } from "./types"
 /** Firestore collection names, exactly as locked in AGENTS.md section 2. */
 export const COLLECTIONS = {
   projects: "projects",
+  installations: "installations",
   runs: "runs",
   screens: "screens",
   archetypes: "archetypes",

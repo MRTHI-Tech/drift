@@ -75,8 +75,9 @@ export async function readProjectBody(request: Request): Promise<ProjectRequestB
  * What preflight was run against. The name is not part of it: it is not checked
  * against anything, and a project can be renamed.
  */
-export function inspectionTarget(body: ProjectRequestBody): NormalizedProjectInput {
+export function inspectionTarget(body: ProjectRequestBody, userId = ""): NormalizedProjectInput {
   return {
+    userId,
     name: "",
     repo: normalizeRepo(body.repo),
     previewUrl: (body.previewUrl ?? "").trim(),
@@ -147,11 +148,15 @@ export interface CreatedProject {
  * recoverable by one command and a project that silently did not get created is
  * not.
  */
-export async function createWatchedProject(body: ProjectRequestBody): Promise<CreatedProject> {
+export async function createWatchedProject(
+  body: ProjectRequestBody,
+  /** Whoever is signed in. Taken from the session, never from the request. */
+  userId: string,
+): Promise<CreatedProject> {
   const repositories = createRepositories()
   const logger = createLogger()
 
-  const input = inspectionTarget(body)
+  const input = inspectionTarget(body, userId)
 
   // The installation the repo was picked from, when it was picked from one.
   // Logged rather than assumed: a project quietly created on the fallback token
@@ -171,6 +176,7 @@ export async function createWatchedProject(body: ProjectRequestBody): Promise<Cr
 
   const project = await createProject({
     input: {
+      userId,
       name: body.name ?? "",
       repo: body.repo,
       previewUrl: body.previewUrl ?? "",

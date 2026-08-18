@@ -10,8 +10,7 @@
 
 import { downloadScreenshot } from "@drift/core"
 
-import { repositories } from "@/lib/data/workspace"
-import { requireApiSession } from "@/lib/session"
+import { apiOwner, notYours, ownedVia } from "@/lib/ownership"
 
 // firebase-admin needs Node, not the edge runtime.
 export const runtime = "nodejs"
@@ -20,17 +19,16 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ screenId: string }> }
 ): Promise<Response> {
-  const gate = await requireApiSession()
+  const gate = await apiOwner()
   if (gate.response) return gate.response
 
   const { screenId } = await context.params
-  const screen = await repositories().screens.get(screenId)
+  const screen = await gate.repositories.screens.get(screenId)
 
-  if (!screen) {
-    return Response.json(
-      { error: `There is no screen ${screenId}.` },
-      { status: 404 }
-    )
+  // A screen that is not there and a screen that is somebody else's answer the
+  // same way. Telling them apart tells a stranger which ids are real.
+  if (!screen || !(await ownedVia(screen, gate.userId, gate.repositories))) {
+    return notYours()
   }
 
   let body: Buffer

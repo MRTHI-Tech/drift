@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
+    "check-ownership": "node scripts/check-ownership.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

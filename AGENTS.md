@@ -24,9 +24,10 @@ Drift is a background agent that watches a deployed product, detects token drift
 
 ## 2. Firestore schema, locked
 
-All documents carry `projectId` except `projects` themselves. Never query across projects. Collection names are exactly these:
+All documents carry `projectId` except `projects` and `installations`. Never query across projects. Collection names are exactly these:
 
-- **projects/{projectId}** — `name`, `repo` (owner/name), `previewUrl`, `defaultBranch`, `configPath` (default `drift.config.json`), `installationId` (number, nullable: the GitHub App installation the repo was granted through, null for a project on `GITHUB_TOKEN`), `createdAt`, `driftScore` (number, 0–100), `lastRunAt`.
+- **projects/{projectId}** — `userId` (Firebase uid of whoever created it), `name`, `repo` (owner/name), `previewUrl`, `defaultBranch`, `configPath` (default `drift.config.json`), `installationId` (number, nullable: the GitHub App installation the repo was granted through, null for a project on `GITHUB_TOKEN`), `createdAt`, `driftScore` (number, 0–100), `lastRunAt`.
+- **installations/{installationId}** — `installationId` (number), `userId`, `account`, `connectedAt`. Document id is the GitHub installation id, so reconnecting replaces rather than duplicates.
 - **runs/{runId}** — `projectId`, `trigger` (`scheduled` | `deploy` | `manual`), `startedAt`, `finishedAt`, `routesChecked`, `status` (`clean` | `findings` | `error`), `findingIds` (array), `error` (nullable).
 - **screens/{screenId}** — `projectId`, `route`, `viewport` (`mobile` | `desktop`), `runId`, `screenshotPath` (`gs://bucket/object`), `computedStyles` (the extracted resolved-value record: keyed by stable selector, each value `{tag, box: {x, y, width, height}, styles}`, where `styles` carries exactly the properties in `STYLE_PROPERTIES` in `packages/core/src/constants.ts`), `text` (each element's own visible text, keyed by the same selectors as `computedStyles`, absent for elements with none), `signature` (see Signature type, null until the signature phase has run), `archetypeId` (nullable), `embedding` (vector, stored as array, null until the embedding phase has run), `capturedAt`.
 - **archetypes/{archetypeId}** — `projectId`, `label` (model-proposed, user-editable), `screenIds`, `createdAt`.
@@ -109,7 +110,11 @@ The allowlist stays in force under both. An installation already bounds what Dri
 
 ## 9. What is out of scope until after August 31
 
-Teams and invitations. Billing. Light mode. Production (non-preview) watching. More than one rules-file format. Route crawling (routes are declared in `drift.config.json`, always). Editor plugins. Any settings page beyond project name, preview URL, and repo. If a task drifts toward any of these, stop.
+Billing. Light mode. Production (non-preview) watching. More than one rules-file format. Route crawling (routes are declared in `drift.config.json`, always). Editor plugins. Any settings page beyond project name, preview URL, and repo. If a task drifts toward any of these, stop.
+
+**Separate accounts are no longer on this list.** They were, and the decision was reversed on 2026-08-18: a person signing in for the first time has to arrive at their own empty Drift and connect their own GitHub, and a shared workspace makes that first run impossible to show. What was added is separation, not teams — one person, their own projects. Invitations, roles, and shared ownership stay out of scope, and nothing about this section licenses them.
+
+The shape it takes is deliberate and is the thing to preserve: **Drift never decides who owns a repo.** GitHub decided that when somebody installed the app, and the picker can only ever offer what their own installation grants. `projects.userId` is only the memory of who made the project, and every read is checked against it.
 
 ## 10. What Drift may write into a watched repo
 

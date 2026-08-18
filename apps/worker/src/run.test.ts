@@ -9,7 +9,7 @@ const silent = createLogger({}, () => {})
 
 const project: Project = {
   id: "proj1",
-  name: "Acme",
+  userId: "user1",  name: "Acme",
   repo: "acme/web",
   previewUrl: "https://preview.example.com",
   defaultBranch: "main",

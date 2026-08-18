@@ -29,7 +29,7 @@ import {
 import { createRepositories } from "../src/repositories"
 
 const USAGE = `Usage: seed --name <name> --repo <owner/name> --preview-url <url>
-             [--default-branch <branch>] [--config-path <path>]`
+             --user <uid> [--default-branch <branch>] [--config-path <path>]`
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
@@ -39,11 +39,22 @@ async function main(): Promise<void> {
       "preview-url": { type: "string" },
       "default-branch": { type: "string", default: DEFAULT_BRANCH },
       "config-path": { type: "string", default: DEFAULT_CONFIG_PATH },
+      user: { type: "string" },
     },
   })
 
+  if (!values.user) {
+    console.error(
+      "Seeding needs --user <uid>: a project belongs to the account that made it.\n" +
+        "The uid is in the dashboard's sign-in, or in the Firebase console under Authentication.",
+    )
+    process.exitCode = 1
+    return
+  }
+
   const project = await createProject({
     input: {
+      userId: values.user,
       name: values.name ?? "",
       repo: values.repo ?? "",
       previewUrl: values["preview-url"] ?? "",

@@ -23,7 +23,7 @@ export async function POST(request: Request): Promise<Response> {
   if (rejected) return rejected
 
   try {
-    return Response.json(await createWatchedProject(body))
+    return Response.json(await createWatchedProject(body, gate.session.uid))
   } catch (error) {
     return creationFailure(error)
   }

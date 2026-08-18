@@ -12,9 +12,12 @@ import { AddProjectDialog } from "@/components/projects/add-project-dialog"
 
 export function NoProjects({
   email,
+  uid,
   onCreated,
 }: {
   email: string | null
+  /** Whose projects would be listed here. The seeding command needs it. */
+  uid: string
   /** Records the new project as the current one. The layout's server action. */
   onCreated: (projectId: string) => Promise<void>
 }) {
@@ -42,7 +45,7 @@ export function NoProjects({
           Or from a terminal, which goes through exactly the same path:
         </p>
         <pre className="overflow-x-auto bg-secondary p-3 font-mono text-xs text-foreground">
-          {`pnpm seed --name "Acme" --repo "acme/web" \\\n  --preview-url "https://acme-preview.a.run.app"`}
+          {`pnpm seed --name "Acme" --repo "acme/web" \\\n  --preview-url "https://acme-preview.a.run.app" \\\n  --user "${uid}"`}
         </pre>
       </div>
     </div>

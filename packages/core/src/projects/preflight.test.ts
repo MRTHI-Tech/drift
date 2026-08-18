@@ -4,7 +4,7 @@ import { fakeGitHub } from "../actuation/fake-github"
 import { preflight, type CheckId, type PreflightCheck, type PreflightResult } from "./preflight"
 
 const project = {
-  name: "Woven",
+  userId: "user1",  name: "Woven",
   repo: "MRTHI-Tech/woven",
   previewUrl: "https://woven-preview.a.run.app",
   defaultBranch: "main",

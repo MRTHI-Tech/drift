@@ -20,7 +20,7 @@ import {
   ProjectNotFoundError,
 } from "@drift/core"
 
-import { requireApiSession } from "@/lib/session"
+import { apiOwner, notYours, ownedProject } from "@/lib/ownership"
 
 // firebase-admin needs Node, not the edge runtime.
 export const runtime = "nodejs"
@@ -30,16 +30,14 @@ interface ProjectParams {
 }
 
 export async function GET(_request: Request, context: ProjectParams): Promise<Response> {
-  const gate = await requireApiSession()
+  const gate = await apiOwner()
   if (gate.response) return gate.response
 
   const { projectId } = await context.params
 
   try {
-    const project = await createRepositories().projects.get(projectId)
-    if (!project) {
-      return Response.json({ error: `No project with id ${projectId}.` }, { status: 404 })
-    }
+    const project = await ownedProject(projectId, gate.userId, gate.repositories)
+    if (!project) return notYours()
 
     return Response.json({
       projectId: project.id,
@@ -53,17 +51,24 @@ export async function GET(_request: Request, context: ProjectParams): Promise<Re
 }
 
 export async function DELETE(request: Request, context: ProjectParams): Promise<Response> {
-  const gate = await requireApiSession()
+  const gate = await apiOwner()
   if (gate.response) return gate.response
 
   const { projectId } = await context.params
   const confirmName = await readConfirmation(request)
 
+  // The most destructive thing in Drift: runs, screens, archetypes,
+  // conventions, findings, resolutions, and every screenshot in the bucket.
+  // Ownership is checked before the name is even compared.
+  if (!(await ownedProject(projectId, gate.userId, gate.repositories))) {
+    return notYours()
+  }
+
   try {
     const result = await deleteProject({
       projectId,
       confirmName,
-      repositories: createRepositories(),
+      repositories: gate.repositories,
       logger: createLogger(),
     })
     return Response.json(result)

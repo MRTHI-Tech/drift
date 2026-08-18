@@ -95,6 +95,7 @@ export async function createProject({
  */
 function newProject(value: NormalizedProjectInput): Omit<Project, "id"> {
   return {
+    userId: value.userId,
     name: value.name,
     repo: value.repo,
     previewUrl: value.previewUrl,

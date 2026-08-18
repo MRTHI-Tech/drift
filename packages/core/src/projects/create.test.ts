@@ -6,7 +6,7 @@ import type { Project } from "../types"
 import { createProject, ProjectExistsError, ProjectInputError } from "./create"
 
 const input = {
-  name: "Woven",
+  userId: "user1",  name: "Woven",
   repo: "MRTHI-Tech/woven",
   previewUrl: "https://woven-preview.a.run.app",
 }
@@ -14,7 +14,7 @@ const input = {
 function existingProject(repo: string): Project {
   return {
     id: "project-existing",
-    name: "Woven",
+    userId: "user1",    name: "Woven",
     repo,
     previewUrl: "https://woven-preview.a.run.app",
     defaultBranch: "main",
@@ -39,7 +39,7 @@ describe("createProject", () => {
     const project = await createProject({ input, repositories })
 
     expect(project).toMatchObject({
-      name: "Woven",
+      userId: "user1",      name: "Woven",
       repo: "MRTHI-Tech/woven",
       previewUrl: "https://woven-preview.a.run.app",
       defaultBranch: "main",
@@ -106,7 +106,7 @@ describe("createProject", () => {
   it("carries one issue per bad field on the error", async () => {
     const repositories = fakeRepositories()
 
-    await createProject({ input: { name: "", repo: "x", previewUrl: "" }, repositories }).catch(
+    await createProject({ input: { userId: "user1", name: "", repo: "x", previewUrl: "" }, repositories }).catch(
       (error: unknown) => {
         expect(error).toBeInstanceOf(ProjectInputError)
         expect((error as ProjectInputError).issues.map((issue) => issue.field)).toEqual([
