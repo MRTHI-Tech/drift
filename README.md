@@ -153,11 +153,27 @@ because a route at 390px and the same route at 1440px are different layouts.
 
 **Conventions** are counted, not concluded. Each screen is projected onto a few
 element-scoped properties (`cta.label`, `cta.voice`, `cta.size`, `cta.radius`,
-`heading.size`, `heading.weight`, `heading.tone`), each carrying the selector
+`heading.size`, `heading.weight`, `heading.tone`, `content.layout`,
+`content.padding`, `content.gap`, `content.width`), each carrying the selector
 its value was read from, and a value becomes a convention when it is the single
 most common one across three or more screens of the archetype. A tie means the
 family has not settled and states nothing. The model writes the convention's
 name and touches nothing else about it.
+
+Each property is read off one of three anchors: the screen's terminal action,
+its first heading, and the container those two sit inside. The container is
+found by geometry rather than by selector, because a selector is anchored at
+the nearest stable ancestor and an element carrying its own `data-testid` has
+one that says nothing about where it sits. The smallest recorded box enclosing
+both other anchors is the container, `body` is never it, and a screen missing
+either anchor has no container and holds no `content` values.
+
+A container that reports `gap: normal` or `max-width: none` holds no value for
+that property rather than a value of none. Those are what a block element
+reports whether or not anybody decided anything, and a family agreeing on them
+has agreed on nothing. It also means a screen rebuilt as a block does not
+acquire a wrong gap; it stops having one, and only the properties it really
+disagrees on are raised.
 
 Two of those properties are read out of the recorded text rather than looked up
 in it. `cta.voice` says whether an action names itself or could sit on any

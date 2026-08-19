@@ -102,7 +102,13 @@ describe("diffScreenTokens", () => {
   })
 
   it("does not diff the properties that need a judgment", () => {
-    expect([...UNDIFFED_PROPERTIES]).toEqual(["line-height", "box-shadow"])
+    expect([...UNDIFFED_PROPERTIES]).toEqual([
+      "line-height",
+      "box-shadow",
+      "display",
+      "gap",
+      "max-width",
+    ])
   })
 })
 

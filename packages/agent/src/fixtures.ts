@@ -28,6 +28,8 @@ export const PLANTED_HEADING_SIZE = "20px"
 /** The heading size its siblings render. */
 export const CONVENTION_HEADING_SIZE = "24px"
 
+/** The element both anchors sit inside, and therefore the content container. */
+export const CONTAINER_SELECTOR = "[data-testid='step']"
 export const HEADING_SELECTOR = "[data-testid='step'] > h1:nth-of-type(1)"
 export const BACK_SELECTOR = "[data-testid='back']"
 export const NEXT_SELECTOR = "[data-testid='next']"
@@ -43,6 +45,9 @@ function styles(overrides: Partial<StyleValues> = {}): StyleValues {
     padding: "0px",
     "border-radius": "0px",
     "box-shadow": "none",
+    display: "block",
+    gap: "normal",
+    "max-width": "none",
     ...overrides,
   }
 }
@@ -65,10 +70,10 @@ export function stepStyles(step: number): ComputedStyles {
       box: { x: 0, y: 0, width: 390, height: 844 },
       styles: styles({ "background-color": "rgb(255, 255, 255)" }),
     },
-    "[data-testid='step']": {
+    [CONTAINER_SELECTOR]: {
       tag: "section",
       box: { x: 0, y: 0, width: 390, height: 844 },
-      styles: styles({ padding: "24px 16px" }),
+      styles: styles({ padding: "24px 16px", display: "flex", gap: "16px" }),
     },
     [HEADING_SELECTOR]: {
       tag: "h1",

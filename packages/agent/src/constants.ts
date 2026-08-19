@@ -47,6 +47,10 @@ export const PATTERN_SEVERITY: Record<string, number> = {
   "heading.size": 2,
   "cta.size": 2,
   "heading.weight": 2,
+  "content.layout": 3,
+  "content.padding": 2,
+  "content.gap": 2,
+  "content.width": 2,
   "cta.radius": 1,
 }
 

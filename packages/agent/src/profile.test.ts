@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   BACK_SELECTOR,
+  CONTAINER_SELECTOR,
   CONVENTION_HEADING_SIZE,
   HEADING_SELECTOR,
   NEXT_SELECTOR,
@@ -12,7 +13,13 @@ import {
   stepStyles,
   stepText,
 } from "./fixtures"
-import { buildProfile, firstHeadingSelector, profileValue, terminalActionSelector } from "./profile"
+import {
+  buildProfile,
+  contentContainerSelector,
+  firstHeadingSelector,
+  profileValue,
+  terminalActionSelector,
+} from "./profile"
 
 function profileOfScreen(screen: Screen) {
   return buildProfile({
@@ -131,6 +138,65 @@ describe("cta.voice", () => {
   })
 })
 
+describe("contentContainerSelector", () => {
+  it("takes the element that encloses both anchors", () => {
+    const styles = stepStyles(2)
+
+    expect(contentContainerSelector(styles, [HEADING_SELECTOR, NEXT_SELECTOR])).toBe(
+      CONTAINER_SELECTOR,
+    )
+  })
+
+  it("prefers the tighter container to the one it sits inside", () => {
+    const styles = stepStyles(2)
+    styles["main:nth-of-type(1)"] = {
+      tag: "main",
+      box: { x: 0, y: 0, width: 390, height: 900 },
+      styles: styles[CONTAINER_SELECTOR]!.styles,
+    }
+
+    expect(contentContainerSelector(styles, [HEADING_SELECTOR, NEXT_SELECTOR])).toBe(
+      CONTAINER_SELECTOR,
+    )
+  })
+
+  it("never answers with the page itself", () => {
+    const styles = stepStyles(2)
+    delete styles[CONTAINER_SELECTOR]
+
+    // `body` is all that is left enclosing both, and it is not a container.
+    expect(contentContainerSelector(styles, [HEADING_SELECTOR, NEXT_SELECTOR])).toBeNull()
+  })
+
+  it("has no container when an anchor has no recorded box", () => {
+    expect(contentContainerSelector(stepStyles(2), [HEADING_SELECTOR, "div:nth-of-type(9)"]))
+      .toBeNull()
+  })
+})
+
+describe("content properties", () => {
+  it("holds none of them on a screen with no heading to enclose", () => {
+    const computedStyles = stepStyles(1)
+    delete computedStyles[HEADING_SELECTOR]
+    const screen = stepScreen(1, { computedStyles })
+
+    expect(profileValue(profileOfScreen(screen), "content.padding")).toBeNull()
+  })
+
+  it("leaves out a value that means the container has none of it", () => {
+    // A block container reports `gap: normal`, which is not a decision.
+    const computedStyles = stepStyles(2)
+    computedStyles[CONTAINER_SELECTOR] = {
+      ...computedStyles[CONTAINER_SELECTOR]!,
+      styles: { ...computedStyles[CONTAINER_SELECTOR]!.styles, display: "block", gap: "normal" },
+    }
+    const profile = profileOfScreen(stepScreen(2, { computedStyles }))
+
+    expect(profileValue(profile, "content.gap")).toBeNull()
+    expect(profileValue(profile, "content.layout")?.value).toBe("block")
+  })
+})
+
 describe("heading.tone", () => {
   it("reads the register the heading is written in", () => {
     const warm = stepScreen(2)
@@ -183,6 +249,14 @@ describe("buildProfile", () => {
       },
       { property: "heading.weight", kind: "style", selector: HEADING_SELECTOR, value: "700" },
       { property: "heading.tone", kind: "derived", selector: HEADING_SELECTOR, value: "neutral" },
+      { property: "content.layout", kind: "style", selector: CONTAINER_SELECTOR, value: "flex" },
+      {
+        property: "content.padding",
+        kind: "style",
+        selector: CONTAINER_SELECTOR,
+        value: "24px 16px",
+      },
+      { property: "content.gap", kind: "style", selector: CONTAINER_SELECTOR, value: "16px" },
     ])
   })
 

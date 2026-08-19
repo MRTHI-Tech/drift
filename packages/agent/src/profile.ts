@@ -17,6 +17,7 @@ import {
   copyTone,
   HEADING_TAGS,
   labelVoice,
+  type BoundingBox,
   type ComputedStyles,
   type ScreenText,
   type Signature,
@@ -45,6 +46,15 @@ export interface ProfileProperty {
   styleProperty: StyleProperty | null
   /** How a person reads the property, for the log and the dashboard. */
   reads: string
+  /**
+   * Recorded values that mean the element has none of this property rather
+   * than some particular amount of it. A block container reports its `gap` as
+   * `normal` and its `max-width` as `none`, which are not decisions anybody
+   * made, and a family agreeing on them has agreed on nothing. A screen whose
+   * value is one of these holds no value for the property at all, the same way
+   * a screen with no heading holds no heading values.
+   */
+  absentValues?: readonly string[]
 }
 
 /**
@@ -75,6 +85,22 @@ export const PROFILE_PROPERTIES: readonly ProfileProperty[] = [
   { property: "heading.size", kind: "style", styleProperty: "font-size", reads: "first heading type size" },
   { property: "heading.weight", kind: "style", styleProperty: "font-weight", reads: "first heading type weight" },
   { property: "heading.tone", kind: "derived", styleProperty: null, reads: "heading tone" },
+  { property: "content.layout", kind: "style", styleProperty: "display", reads: "content container layout" },
+  { property: "content.padding", kind: "style", styleProperty: "padding", reads: "content container padding" },
+  {
+    property: "content.gap",
+    kind: "style",
+    styleProperty: "gap",
+    reads: "space between content blocks",
+    absentValues: ["normal", "normal normal"],
+  },
+  {
+    property: "content.width",
+    kind: "style",
+    styleProperty: "max-width",
+    reads: "content container width limit",
+    absentValues: ["none"],
+  },
 ]
 
 const BY_NAME = new Map(PROFILE_PROPERTIES.map((entry) => [entry.property, entry]))
@@ -120,14 +146,21 @@ export interface ProfileInput {
  * heading.
  */
 export function buildProfile(input: ProfileInput): ScreenProfile {
-  const anchors = {
-    cta: terminalActionSelector(input.signature, input.computedStyles),
-    heading: firstHeadingSelector(input.computedStyles),
+  const cta = terminalActionSelector(input.signature, input.computedStyles)
+  const heading = firstHeadingSelector(input.computedStyles)
+
+  const anchors: Record<string, string | null> = {
+    cta,
+    heading,
+    // Only when the screen has both, so that the container being compared is
+    // the one holding the same two things on every screen of the family.
+    content:
+      cta && heading ? contentContainerSelector(input.computedStyles, [heading, cta]) : null,
   }
 
   const values: ScreenProfile = []
   for (const property of PROFILE_PROPERTIES) {
-    const selector = property.property.startsWith("cta.") ? anchors.cta : anchors.heading
+    const selector = anchors[property.property.split(".")[0] ?? ""] ?? null
     if (!selector) continue
 
     const value =
@@ -138,6 +171,8 @@ export function buildProfile(input: ProfileInput): ScreenProfile {
           : readStyle(input.computedStyles, selector, property.styleProperty)
 
     if (value === null || value.length === 0) continue
+    if (property.absentValues?.includes(value)) continue
+
     values.push({ property: property.property, kind: property.kind, selector, value })
   }
 
@@ -190,6 +225,64 @@ export function terminalActionSelector(
 
   const alone = actions.filter((action) => peers.get(appearance(action.selector)) === 1)
   return alone[alone.length - 1]?.selector ?? null
+}
+
+/**
+ * The container the screen's content sits in: the smallest recorded element
+ * whose box surrounds every anchor given to it.
+ *
+ * Found by geometry rather than by walking the selectors, and the reason is
+ * that a selector is anchored at the nearest stable ancestor, so an element
+ * carrying its own `data-testid` has a selector that says nothing about where
+ * it sits. A heading at `[data-testid="step"] > h1` and a button at
+ * `[data-testid="next"]` are siblings in the page and strangers in their
+ * names. Their boxes still agree on what encloses them.
+ *
+ * Smallest wins, so a tight wrapper is preferred to the full-page one it sits
+ * inside. Ties break on the selector, the same way `firstHeadingSelector`
+ * breaks its own, so the same screen always yields the same container. The
+ * anchors themselves are never their own container, and `body` is never one
+ * either: it is the page, and every screen has exactly one, so a convention
+ * stated over it would say nothing about how this family arranges anything.
+ *
+ * Null when any anchor has no recorded box, or when nothing encloses them all.
+ */
+export function contentContainerSelector(
+  computedStyles: ComputedStyles,
+  contained: readonly string[],
+): string | null {
+  if (contained.length === 0) return null
+
+  const boxes: BoundingBox[] = []
+  for (const selector of contained) {
+    const box = computedStyles[selector]?.box
+    if (!box) return null
+    boxes.push(box)
+  }
+
+  let best: { selector: string; area: number } | null = null
+
+  for (const [selector, element] of Object.entries(computedStyles)) {
+    if (selector === "body" || contained.includes(selector)) continue
+    if (!boxes.every((box) => surrounds(element.box, box))) continue
+
+    const area = element.box.width * element.box.height
+    if (!best || area < best.area || (area === best.area && selector < best.selector)) {
+      best = { selector, area }
+    }
+  }
+
+  return best?.selector ?? null
+}
+
+/** Whether the outer box encloses the inner one. Touching edges still enclose. */
+function surrounds(outer: BoundingBox, inner: BoundingBox): boolean {
+  return (
+    outer.x <= inner.x &&
+    outer.y <= inner.y &&
+    outer.x + outer.width >= inner.x + inner.width &&
+    outer.y + outer.height >= inner.y + inner.height
+  )
 }
 
 /** The screen's first heading, top to bottom. Ties break on the selector. */

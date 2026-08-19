@@ -80,6 +80,9 @@ function styles(overrides: Partial<StyleValues> = {}): StyleValues {
     padding: "0px",
     "border-radius": "0px",
     "box-shadow": "none",
+    display: "block",
+    gap: "normal",
+    "max-width": "none",
     ...overrides,
   }
 }

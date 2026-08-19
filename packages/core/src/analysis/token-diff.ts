@@ -25,8 +25,12 @@ export const PROPERTY_GROUPS = {
 /**
  * Recorded properties this phase does not diff. `line-height` is only readable
  * against the font size it belongs to, and `box-shadow` is a composite of a
- * colour and four lengths. Both are pattern-drift questions, so they wait for
- * the judgment phase rather than being guessed at here.
+ * colour and four lengths. `display`, `gap` and `max-width` describe how a
+ * container is arranged, and a container is arranged correctly or not relative
+ * to its siblings rather than relative to a token: a screen laid out as a grid
+ * where its family uses flex has not used the wrong value, it has used a
+ * different one. All of them are pattern-drift questions, so they wait for the
+ * judgment phase rather than being guessed at here.
  */
 export const UNDIFFED_PROPERTIES = STYLE_PROPERTIES.filter(
   (property) => !(property in PROPERTY_GROUPS),

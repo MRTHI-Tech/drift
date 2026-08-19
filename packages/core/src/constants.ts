@@ -50,6 +50,9 @@ export const STYLE_PROPERTIES = [
   "padding",
   "border-radius",
   "box-shadow",
+  "display",
+  "gap",
+  "max-width",
 ] as const
 
 export type StyleProperty = (typeof STYLE_PROPERTIES)[number]
