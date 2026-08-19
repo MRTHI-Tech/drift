@@ -159,6 +159,85 @@ describe("gateProposedFix", () => {
     expect(result.plan).not.toBeNull()
   })
 
+  it("checks a derived property by reading what was written, not by matching it", () => {
+    // `heading.tone` asks for "warm", and no source file will ever contain
+    // that word. What arrives is a heading that reads as warm.
+    const files = [{ path: "app/step/page.tsx", text: "<h1>Personal information</h1>\n" }]
+    const result = gate(
+      [
+        {
+          path: "app/step/page.tsx",
+          find: "<h1>Personal information</h1>",
+          replace: "<h1>Let's get you set up</h1>",
+        },
+      ],
+      {
+        files,
+        kind: "copy",
+        from: "formal",
+        to: "warm",
+        group: null,
+        arrival: { kind: "derived", reads: (text) => text.includes("Let's") },
+      },
+    )
+
+    expect(result.kept).toBe(1)
+    expect(result.plan?.files[0]?.after).toContain("Let's get you set up")
+  })
+
+  it("refuses a derived fix that does not read as what was asked for", () => {
+    const files = [{ path: "app/step/page.tsx", text: "<h1>Personal information</h1>\n" }]
+    const result = gate(
+      [
+        {
+          path: "app/step/page.tsx",
+          find: "<h1>Personal information</h1>",
+          replace: "<h1>Account information</h1>",
+        },
+      ],
+      {
+        files,
+        kind: "copy",
+        from: "formal",
+        to: "warm",
+        group: null,
+        arrival: { kind: "derived", reads: (text) => text.includes("Let's") },
+      },
+    )
+
+    expect(result.plan).toBeNull()
+  })
+
+  it("reads a derived value off the words, not off the markup around them", () => {
+    const files = [{ path: "app/step/page.tsx", text: '<h1 className="terms-list">Hi</h1>\n' }]
+    let seen = ""
+    gate(
+      [
+        {
+          path: "app/step/page.tsx",
+          find: '<h1 className="terms-list">Hi</h1>',
+          replace: '<h1 className="terms-list">Hey, how are you?</h1>',
+        },
+      ],
+      {
+        files,
+        kind: "copy",
+        from: "formal",
+        to: "warm",
+        group: null,
+        arrival: {
+          kind: "derived",
+          reads: (text) => {
+            seen = text
+            return true
+          },
+        },
+      },
+    )
+
+    expect(seen).toBe("Hey, how are you?")
+  })
+
   it("has nothing to keep when the model proposed nothing", () => {
     const result = gate([])
 

@@ -57,6 +57,123 @@ function resolve(
   return resolveFinding({ findingId, action, reason, repositories, octokit: github.octokit })
 }
 
+/**
+ * A tone finding: the value is a reading rather than a literal, so no
+ * substitution could ever reach it. This is the case option two exists for.
+ */
+const TONE_FINDING = {
+  ...PATTERN_FINDING,
+  id: "finding-tone",
+  conventionId: null,
+  evidence: {
+    ...PATTERN_FINDING.evidence,
+    property: "heading.tone",
+    observedValue: "formal",
+    expectedValue: "warm",
+    expectedSource: "onboarding speaks to the reader",
+    sentence: "This screen's heading tone is formal. 5 sibling screens use warm.",
+  },
+}
+
+describe("resolveFinding, and the Fixer a person's decision unlocks", () => {
+  beforeEach(() => {
+    repositories = fakeRepositories({
+      projects: [PROJECT],
+      archetypes: [ARCHETYPE],
+      findings: [structuredClone(TONE_FINDING), structuredClone(TOKEN_FINDING)],
+      screens: [screen({ screenshotPath: "no-screenshot-in-tests" })],
+    })
+  })
+
+  const resolveWithFixer = (
+    findingId: string,
+    proposeFix: Parameters<typeof resolveFinding>[0]["proposeFix"],
+  ) =>
+    resolveFinding({
+      findingId,
+      action: "conform",
+      repositories,
+      octokit: github.octokit,
+      proposeFix,
+    })
+
+  it("asks the Fixer for drift no substitution could reach", async () => {
+    let blocked = ""
+    await resolveWithFixer(TONE_FINDING.id, async (request) => {
+      blocked = request.blocked
+      return { plan: null, reasons: [] }
+    })
+
+    expect(blocked.length).toBeGreaterThan(0)
+  })
+
+  it("does not ask when the mechanical patcher can do the job", async () => {
+    let asked = 0
+    await resolveWithFixer(TOKEN_FINDING.id, async () => {
+      asked += 1
+      return { plan: null, reasons: [] }
+    })
+
+    expect(asked).toBe(0)
+    expect(github.pulls).toHaveLength(1)
+  })
+
+  it("opens what the Fixer proposes, as a draft", async () => {
+    const file = SOURCE_FILES[0]!
+    const result = await resolveWithFixer(TONE_FINDING.id, async () => ({
+      plan: {
+        kind: "copy" as const,
+        author: "model" as const,
+        from: "formal",
+        to: "warm",
+        files: [
+          {
+            path: file.path,
+            before: file.text,
+            after: file.text.replace("Pricing</h1>", "Let's find your plan</h1>"),
+            occurrences: 1,
+          },
+        ],
+        occurrences: 1,
+        blocked: null,
+      },
+      reasons: [],
+    }))
+
+    expect(result.pullRequest?.opened).toBe(true)
+    expect(github.pulls[0]?.draft).toBe(true)
+    expect(github.pulls[0]?.head).toBe(fixBranchName(TONE_FINDING.id))
+  })
+
+  it("records the decision even when the Fixer finds nothing", async () => {
+    const result = await resolveWithFixer(TONE_FINDING.id, async () => ({
+      plan: null,
+      reasons: ["The Fixer said: the heading is built from data."],
+    }))
+
+    expect(result.status).toBe("resolved_conform")
+    expect(repositories.stored.resolutions).toHaveLength(1)
+    expect(result.pullRequest?.opened).toBe(false)
+  })
+
+  it("keeps the decision when the Fixer falls over", async () => {
+    const result = await resolveWithFixer(TONE_FINDING.id, async () => {
+      throw new Error("Gemini is down.")
+    })
+
+    expect(result.status).toBe("resolved_conform")
+    expect(repositories.stored.resolutions).toHaveLength(1)
+  })
+
+  it("behaves exactly as before when no Fixer is wired", async () => {
+    const result = await resolveWithFixer(TONE_FINDING.id, undefined)
+
+    expect(result.status).toBe("resolved_conform")
+    expect(result.pullRequest?.opened).toBe(false)
+    expect(github.pulls).toHaveLength(0)
+  })
+})
+
 describe("resolveFinding, the record it leaves", () => {
   it("appends a resolution and moves the finding, in that order", async () => {
     const result = await resolve(PATTERN_FINDING.id, "conform")

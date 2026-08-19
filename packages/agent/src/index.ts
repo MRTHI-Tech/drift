@@ -32,6 +32,9 @@ export { attemptOrEmpty, type AttemptOptions } from "./retry"
 export {
   PROFILE_PROPERTIES,
   buildProfile,
+  contentContainerSelector,
+  deriveFromLabel,
+  deriveValue,
   firstHeadingSelector,
   profileProperty,
   profileValue,
@@ -84,7 +87,7 @@ export {
 
 export * from "./flows"
 
-export { fixerFor } from "./fixer"
+export { arrivalFor, fixerFor } from "./fixer"
 export {
   listRepoFiles,
   readRepoFile,

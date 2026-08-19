@@ -246,6 +246,22 @@ exactly once, stays inside its bounds, and arrives at the value the finding
 named. It cannot prove the result compiles, so a fix from the Fixer opens as a
 **draft** and a person merges it.
 
+Arriving at the value means one of two things. For a value or a label, the
+target is written in source and the gate looks for it. For a derived property
+it cannot be: nothing in a repo contains the word `warm`, and a heading
+rewritten to sound warm never will. Those are checked by reading the new line
+the same way the screen's own line was read, with the same function, so the
+gate and the measurement always agree about what warm means.
+
+**Pattern drift reaches the Fixer only through a resolution.** During a run the
+Fixer is asked about token findings alone, because a value that missed a named
+token has a right answer nobody has to choose. Whether this screen or its five
+siblings are the ones that should change is a judgment about the product, so
+Drift does not make it. When a person makes it, by choosing conform or update
+siblings on a finding, the Fixer is asked to carry it out, and a label, a tone,
+or a container that no substitution could reach becomes a draft pull request.
+The judgment stays theirs; the typing becomes Drift's.
+
 **Unprompted pull requests** are a narrower subset again: a token finding,
 nobody has decided anything about it, it names the token it missed, and the
 value sits close enough to that token that snapping it is a correction rather

@@ -17,6 +17,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@types/react@19.2.18)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@drift/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@drift/core':
         specifier: workspace:*
         version: link:../../packages/core

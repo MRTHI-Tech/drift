@@ -338,8 +338,22 @@ export function deriveValue(
   selector: string,
 ): string | null {
   const label = resolveLabel(text, selector)
-  if (label.length === 0) return null
+  return label.length === 0 ? null : deriveFromLabel(property, label)
+}
 
+/**
+ * A derived property's value, read straight off a line rather than off a
+ * screen's record.
+ *
+ * Split out from `deriveValue` because two callers need it from two
+ * directions. The gate re-derives from the extraction, which is where a
+ * rendered screen's words live. The Fixer's arrival check re-derives from the
+ * line it just wrote into source, which has not been rendered and may never
+ * be. Both have to agree about what "warm" means, and they do by calling the
+ * same function.
+ */
+export function deriveFromLabel(property: string, label: string): string | null {
+  if (label.length === 0) return null
   if (property === "cta.voice") return labelVoice(label)
   if (property === "heading.tone") return copyTone(label)
   return null

@@ -12,6 +12,7 @@ import {
   evidenceSentence,
   patchKindOf,
   valueGroupOf,
+  type FixArrival,
   type FixProposal,
   type FixProposer,
   type FixRequest,
@@ -19,6 +20,24 @@ import {
 
 import { proposeFix } from "./flows"
 import type { AgentLogger } from "./logging"
+import { deriveFromLabel, profileProperty } from "./profile"
+
+/**
+ * How the fix gate should check that this finding's fix arrived.
+ *
+ * A style value or a label is written in source, so it can be looked for. A
+ * derived property is not: nothing in a repo contains the word `warm`, and a
+ * heading rewritten to sound warm still will not. Those are checked by reading
+ * the new line the same way the screen's own line was read.
+ */
+export function arrivalFor(property: string, expectedValue: string): FixArrival {
+  if (profileProperty(property)?.kind !== "derived") return { kind: "literal" }
+
+  return {
+    kind: "derived",
+    reads: (text) => deriveFromLabel(property, text) === expectedValue,
+  }
+}
 
 /** A proposer bound to one run's logger, for `openAutonomousPullRequests`. */
 export function fixerFor(logger: AgentLogger): FixProposer {
@@ -39,6 +58,7 @@ export function fixerFor(logger: AgentLogger): FixProposer {
         kind: patchKindOf(finding),
         group: valueGroupOf(evidence.property),
         files: [...request.files],
+        arrival: arrivalFor(evidence.property, evidence.expectedValue),
       },
       logger,
     )

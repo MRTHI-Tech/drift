@@ -17,14 +17,15 @@
 
 import type { Octokit } from "@octokit/rest"
 
-import { githubClientFor } from "../github"
+import { fetchSourceFiles, githubClientFor, type SourceFile } from "../github"
 import { createRepositories, type Repositories } from "../repositories"
 import { refreshDriftScore, type DriftScoreRefresh } from "../score"
 import type { Convention, Finding, FindingStatus, Project, Resolution } from "../types"
 import { actuationError, silentActuationLogger, type ActuationLogger } from "./logging"
 import { openFixPullRequest, type PullRequestResult } from "./open-pr"
-import type { PatchDirection } from "./patch"
+import { planFindingPatch, type PatchDirection, type PatchPlan } from "./patch"
 import { syncRulesFile, type RulesSyncResult } from "./rules-sync"
+import type { FixProposer } from "./run-actuation"
 
 /** What a person can say about a finding. */
 export type ResolutionAction = "conform" | "update_siblings" | "exception" | "dismiss"
@@ -78,6 +79,18 @@ export interface ResolveFindingInput {
   logger?: ActuationLogger
   /** Work everything out, write nothing to Firestore or to GitHub. */
   dryRun?: boolean
+  /**
+   * Asked when a person chose a direction and the mechanical patcher cannot
+   * plan it. This is the path pattern drift reaches the Fixer by, and the
+   * distinction from the unprompted path is the whole reason it is allowed to:
+   * whether the screen or its siblings should change is a judgment about the
+   * product, and here a person has already made it. What is left is finding
+   * where the value is written, which is work rather than judgment.
+   *
+   * Omitted, and a finding no substitution can reach is reported exactly as it
+   * always has been.
+   */
+  proposeFix?: FixProposer
 }
 
 export interface ResolveFindingResult {
@@ -380,6 +393,7 @@ interface ActuateInput extends ResolveFindingInput {
   logger: ActuationLogger
   dryRun: boolean
   conventionChanged: boolean
+  proposeFix?: FixProposer
 }
 
 interface ActuateResult {
@@ -387,6 +401,62 @@ interface ActuateResult {
   pullRequestError: string | null
   rules: RulesSyncResult | null
   rulesError: string | null
+}
+
+/**
+ * The Fixer's plan for a resolution the mechanical patcher cannot carry out,
+ * along with the files both were planned against.
+ *
+ * Null when there is no proposer wired, when the repo cannot be read, or when
+ * the mechanical patcher can do the job on its own. In every one of those
+ * cases `openFixPullRequest` goes on to fetch and plan exactly as it did
+ * before, so the path a person takes through a resolution is unchanged by
+ * whether a Fixer exists.
+ *
+ * Never throws. A Fixer that falls over costs the resolution nothing: the
+ * decision is already recorded, and the pull request falls back to the
+ * mechanical attempt and its own blocked reason.
+ */
+async function plannedFix(
+  input: ActuateInput,
+  octokit: Octokit,
+  direction: PatchDirection,
+): Promise<{ files: SourceFile[]; plan: PatchPlan } | null> {
+  if (!input.proposeFix) return null
+
+  try {
+    const files = await fetchSourceFiles(octokit, {
+      repo: input.project.repo,
+      ref: input.project.defaultBranch,
+    })
+
+    const mechanical = planFindingPatch(input.finding, direction, files)
+    if (mechanical.blocked === null) return { files, plan: mechanical }
+
+    const screen = await input.repositories.screens.get(input.finding.screenId)
+    const proposal = await input.proposeFix({
+      finding: input.finding,
+      files,
+      blocked: mechanical.blocked,
+      route: screen?.route ?? "",
+    })
+
+    input.logger.log("resolve.fixer", {
+      findingId: input.finding.id,
+      blocked: mechanical.blocked,
+      proposed: proposal.plan !== null,
+      files: proposal.plan?.files.map((file) => file.path) ?? [],
+      reasons: proposal.reasons,
+    })
+
+    return { files, plan: proposal.plan ?? mechanical }
+  } catch (error) {
+    input.logger.error("resolve.fixer_failed", {
+      findingId: input.finding.id,
+      message: actuationError(error),
+    })
+    return null
+  }
 }
 
 /**
@@ -418,6 +488,8 @@ async function actuate(input: ActuateInput): Promise<ActuateResult> {
 
   if (direction) {
     try {
+      const fixed = await plannedFix(input, octokit, direction)
+
       result.pullRequest = await openFixPullRequest({
         octokit,
         project: input.project,
@@ -425,6 +497,8 @@ async function actuate(input: ActuateInput): Promise<ActuateResult> {
         direction,
         opener: "resolution",
         repositories: input.repositories,
+        sourceFiles: fixed?.files,
+        plan: fixed?.plan,
         logger: input.logger,
         dryRun: input.dryRun,
       })

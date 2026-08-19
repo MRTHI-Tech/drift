@@ -26,10 +26,14 @@
  *   5. The edits together stay inside the bounds: so many files, so many
  *      lines. A correct fix for one finding is small. A large one is a
  *      refactor the model decided to do on the way past.
- *   6. Somewhere in what it wrote, the value the finding asked for actually
- *      appears, in one of the spellings source is allowed to write it in. An
- *      edit set that never mentions the target value is not a fix for this
- *      finding whatever else it is.
+ *   6. The edits actually arrive at what the finding asked for. For a value or
+ *      a label that means the target appears in what was written, in one of
+ *      the spellings source is allowed to write it in. For a derived property
+ *      it cannot mean that, because the target is a reading rather than a
+ *      literal: no source file contains the word `warm`, and a heading that
+ *      has been rewritten to sound warm never will. So a derived property is
+ *      checked by deriving it again from the text the Fixer wrote, which is
+ *      the same move the reconciliation gate makes for the same reason.
  *
  * What the gate cannot do is tell whether the result compiles or whether the
  * change is the right one to have made. Nothing short of building the watched
@@ -43,6 +47,22 @@ import type { TokenGroup } from "../analysis/tokens"
 import { MAX_FIX_FILES, MAX_FIX_LINES } from "./constants"
 import type { FileEdit, PatchPlan } from "./patch"
 import { sourceSpellings } from "./spellings"
+
+/**
+ * How the gate tells whether an edit set arrived at what was asked of it.
+ *
+ * `literal` is the ordinary case: the value is written in source, so it can be
+ * looked for. `derived` is for a property whose value was never a literal, and
+ * carries the reading itself, because which function derives which property is
+ * knowledge that lives in the profile rather than here.
+ */
+export type FixArrival =
+  | { kind: "literal" }
+  | {
+      kind: "derived"
+      /** True when the text the Fixer wrote now reads as the target value. */
+      reads: (text: string) => boolean
+    }
 
 /** One edit exactly as the model proposed it. Nothing here is trusted yet. */
 export interface ProposedEdit {
@@ -74,6 +94,8 @@ export interface FixGateInput {
   kind: PatchPlan["kind"]
   /** The value the fix is supposed to move away from, for the plan it returns. */
   from: string
+  /** How rule 6 is checked. Literal unless the caller says otherwise. */
+  arrival?: FixArrival
 }
 
 export interface FixGateResult {
@@ -106,6 +128,15 @@ function editLines(edit: ProposedEdit): number {
   return Math.max(edit.find.split("\n").length, edit.replace.split("\n").length)
 }
 
+/**
+ * What a person would read in a piece of source, near enough for a classifier.
+ * Tags go, their attributes with them, because a `className` is not the voice
+ * of the screen and a word inside one should not be counted as though it were.
+ */
+function visibleText(source: string): string {
+  return source.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+}
+
 /** Occurrences of a literal, counted without treating any of it as a pattern. */
 function countOf(haystack: string, needle: string): number {
   let count = 0
@@ -133,6 +164,7 @@ export function gateProposedFix(input: FixGateInput): FixGateResult {
   const originals = new Map(input.files.map((file) => [file.path, file.text]))
   const current = new Map(originals)
   const touched = new Set<string>()
+  const applied: ProposedEdit[] = []
   let lines = 0
   let kept = 0
 
@@ -180,6 +212,7 @@ export function gateProposedFix(input: FixGateInput): FixGateResult {
     }
 
     current.set(edit.path, text.replace(edit.find, edit.replace))
+    applied.push(edit)
     touched.add(edit.path)
     lines = wouldSpan
     kept += 1
@@ -196,12 +229,17 @@ export function gateProposedFix(input: FixGateInput): FixGateResult {
 
   // Rule 6. Everything above only checked that the edits are applicable; this
   // asks whether they are a fix for the finding that asked for them.
-  const spellings = input.kind === "copy" ? [input.to.trim()] : sourceSpellings(input.to, input.group)
-  const arrived = [...touched].some((path) => {
-    const before = originals.get(path) ?? ""
-    const after = current.get(path) ?? ""
-    return spellings.some((spelling) => countOf(after, spelling) > countOf(before, spelling))
-  })
+  const arrival = input.arrival ?? { kind: "literal" }
+  const arrived =
+    arrival.kind === "derived"
+      ? applied.some((edit) => arrival.reads(visibleText(edit.replace)))
+      : [...touched].some((path) => {
+          const before = originals.get(path) ?? ""
+          const after = current.get(path) ?? ""
+          const spellings =
+            input.kind === "copy" ? [input.to.trim()] : sourceSpellings(input.to, input.group)
+          return spellings.some((spelling) => countOf(after, spelling) > countOf(before, spelling))
+        })
   if (!arrived) {
     reasons.push(`Nothing the Fixer wrote contains ${input.to}, so it is not a fix for this finding.`)
     return { ...result, kept: 0 }

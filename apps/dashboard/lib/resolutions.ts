@@ -15,9 +15,11 @@
  * open a pull request against a repo that is not on it.
  */
 
+import { fixerFor } from "@drift/agent"
 import {
   ResolutionError,
   ResolutionNotFoundError,
+  createLogger,
   resolveFinding,
   type ResolutionAction,
   type ResolveFindingResult,
@@ -62,12 +64,24 @@ export async function handleResolution(
     return notYours()
   }
 
+  // A person has chosen a direction, so the judgment is made and what is left
+  // is finding where the value is written. That is the one path pattern drift
+  // reaches the Fixer by (AGENTS.md section 10a); nothing here is unprompted.
+  const logger = createLogger({
+    findingId,
+    action,
+    projectId: finding?.projectId ?? null,
+    userId: gate.userId,
+  })
+
   try {
     const result = await resolveFinding({
       findingId,
       action,
       reason: body.reason,
       dryRun: body.dryRun,
+      logger,
+      proposeFix: fixerFor(logger),
     })
     return Response.json(present(result))
   } catch (error) {

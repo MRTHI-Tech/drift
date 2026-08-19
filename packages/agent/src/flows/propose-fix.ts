@@ -29,6 +29,7 @@
 
 import {
   gateProposedFix,
+  type FixArrival,
   type PatchPlan,
   type ProposedEdit,
   type SourceFile,
@@ -61,6 +62,12 @@ export const ProposeFixInput = z.object({
   files: z.custom<SourceFile[]>((value) => Array.isArray(value), {
     message: "files must be the source files the repo was fetched with",
   }),
+  /**
+   * How the gate checks that the fix arrived. Omitted for a value written in
+   * source, which is the ordinary case; supplied for a derived property, whose
+   * target is a reading rather than a literal.
+   */
+  arrival: z.custom<FixArrival>(() => true).optional(),
 })
 
 export const ProposeFixOutput = z.object({
@@ -205,6 +212,7 @@ export async function proposeFix(
     from: input.observedValue,
     to: input.expectedValue,
     group: (input.group as TokenGroup | null) ?? null,
+    arrival: input.arrival,
   })
 
   const reasons = [...gate.reasons]

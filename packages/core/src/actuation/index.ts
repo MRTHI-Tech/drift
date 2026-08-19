@@ -33,6 +33,7 @@ export { evidenceSentence, tokenSentence } from "./evidence"
 
 export {
   gateProposedFix,
+  type FixArrival,
   type FixDropReason,
   type FixGateInput,
   type FixGateResult,
