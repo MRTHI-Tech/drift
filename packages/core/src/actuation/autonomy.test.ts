@@ -15,6 +15,72 @@ function qualifying(files: SourceFile[] = SOURCE_FILES) {
   }
 }
 
+/** A plan as the Fixer's gate returns one: the model's, already bounded. */
+function modelPlan(paths: string[] = ["app/pricing/page.tsx"]) {
+  const mechanical = planFindingPatch(TOKEN_FINDING, "conform", SOURCE_FILES)
+  return {
+    ...mechanical,
+    author: "model" as const,
+    occurrences: 2,
+    files: paths.map((path) => ({ path, before: "before", after: "after", occurrences: 1 })),
+  }
+}
+
+describe("isAutonomousFix, on a plan the Fixer wrote", () => {
+  it("opens it, and says in its reason that it is a draft", () => {
+    const decision = isAutonomousFix({
+      finding: TOKEN_FINDING,
+      plan: modelPlan(),
+      nearestTokenDistance: 0.05,
+    })
+
+    expect(decision.autonomous).toBe(true)
+    expect(decision.reason).toContain("draft")
+  })
+
+  it("allows more than one edit, since the gate already bounded them", () => {
+    expect(
+      isAutonomousFix({
+        finding: TOKEN_FINDING,
+        plan: modelPlan(),
+        nearestTokenDistance: 0.05,
+      }).autonomous,
+    ).toBe(true)
+  })
+
+  it("refuses a change spread across files", () => {
+    const decision = isAutonomousFix({
+      finding: TOKEN_FINDING,
+      plan: modelPlan(["app/pricing/page.tsx", "theme.ts"]),
+      nearestTokenDistance: 0.05,
+    })
+
+    expect(decision.autonomous).toBe(false)
+    expect(decision.reason).toContain("2 files")
+  })
+
+  it("still applies the distance limit, which is about the value not the author", () => {
+    const decision = isAutonomousFix({
+      finding: TOKEN_FINDING,
+      plan: modelPlan(),
+      nearestTokenDistance: 0.9,
+    })
+
+    expect(decision.autonomous).toBe(false)
+    expect(decision.reason).toContain("choice somebody made")
+  })
+
+  it("still refuses pattern drift, whoever wrote the patch", () => {
+    expect(
+      isAutonomousFix({
+        finding: PATTERN_FINDING,
+        plan: { ...modelPlan(), kind: "copy" as const },
+        nearestTokenDistance: 0,
+      }).autonomous,
+    ).toBe(false)
+  })
+})
+
 describe("isAutonomousFix", () => {
   it("opens a single close token substitution unprompted", () => {
     const decision = isAutonomousFix(qualifying())

@@ -10,7 +10,7 @@
  * model that is unavailable costs the run its pattern findings and nothing
  * else (AGENTS.md section 4).
  */
-import { judgeRun, type CapturedScreen } from "@drift/agent"
+import { fixerFor, judgeRun, type CapturedScreen } from "@drift/agent"
 import {
   actuationCandidates,
   buildSignature,
@@ -454,6 +454,10 @@ async function actuateRun(input: ActuateRunInput): Promise<AutonomousRunResult |
       candidates,
       repositories: input.repositories,
       logger: input.logger,
+      // Asked only for a finding the mechanical patcher would not touch
+      // (AGENTS.md section 10a). The worker is where the Fixer is joined to
+      // the run, because it is the only package that depends on both.
+      proposeFix: fixerFor(input.logger),
     })
   } catch (error) {
     input.logger.error("actuate.error", { message: errorMessage(error) })

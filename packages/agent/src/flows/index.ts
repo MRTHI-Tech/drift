@@ -23,6 +23,12 @@ export {
   judgePatternDriftFlow,
 } from "./judge-pattern-drift"
 export {
+  ProposeFixInput,
+  ProposeFixOutput,
+  proposeFix,
+  proposeFixFlow,
+} from "./propose-fix"
+export {
   LabelConventionInput,
   LabelConventionOutput,
   labelConvention,

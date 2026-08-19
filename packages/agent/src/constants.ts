@@ -57,6 +57,23 @@ export const PATTERN_SEVERITY: Record<string, number> = {
 /** Severity of a property with no entry above. */
 export const DEFAULT_PATTERN_SEVERITY = 1
 
+/**
+ * What the Fixer may see in one tool call.
+ *
+ * Small on purpose. A fix for one finding is found by looking in one or two
+ * places, and a Fixer that has read two thousand lines is one that is casting
+ * about rather than working from the evidence it was handed.
+ */
+export const MAX_SEARCH_HITS = 30
+export const MAX_READ_LINES = 200
+
+/**
+ * Tool calls the Fixer gets before it has to answer with what it has. Genkit
+ * counts a turn as one model response, so this is how many times it may look
+ * something up and think again.
+ */
+export const MAX_FIX_TURNS = 8
+
 /** Wait before the one retry every model call gets (AGENTS.md section 4). */
 export const RETRY_BACKOFF_MS = 750
 

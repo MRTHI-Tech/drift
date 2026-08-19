@@ -21,7 +21,7 @@ import type { Finding, Project } from "../types"
 import { isAutonomousFix } from "./autonomy"
 import { actuationError, silentActuationLogger, type ActuationLogger } from "./logging"
 import { openFixPullRequest } from "./open-pr"
-import { planFindingPatch } from "./patch"
+import { planFindingPatch, type PatchPlan } from "./patch"
 
 /** One finding a run raised, with what the diff knew when it raised it. */
 export interface AutonomousCandidate {
@@ -34,6 +34,33 @@ export interface AutonomousCandidate {
   nearestTokenDistance: number | null
 }
 
+/**
+ * What the Fixer is asked, and what it answers. Declared here as an interface
+ * rather than imported, so `@drift/core` does not depend on `@drift/agent`:
+ * the flow in `packages/agent/src/flows/propose-fix.ts` satisfies it
+ * structurally and the worker, which depends on both, is what joins them.
+ *
+ * A run with no proposer wired is a run that only ever opens mechanical
+ * patches, which is exactly what every run did before section 10a admitted a
+ * second class. Nothing about this port is required for a run to work.
+ */
+export interface FixRequest {
+  finding: Finding
+  files: readonly SourceFile[]
+  /** Why the mechanical patcher would not do this. Never empty. */
+  blocked: string
+  route: string
+}
+
+export interface FixProposal {
+  /** Null when the Fixer found nothing it could safely do. */
+  plan: PatchPlan | null
+  /** Drops and declines, for the run log. */
+  reasons: readonly string[]
+}
+
+export type FixProposer = (request: FixRequest) => Promise<FixProposal>
+
 export interface AutonomousRunInput {
   octokit: Octokit
   project: Project
@@ -42,6 +69,11 @@ export interface AutonomousRunInput {
   logger?: ActuationLogger
   /** Decide everything, write nothing. */
   dryRun?: boolean
+  /**
+   * Asked only for a finding the mechanical patcher would not touch. Omitted,
+   * and such a finding waits for a person exactly as it always has.
+   */
+  proposeFix?: FixProposer
 }
 
 export interface AutonomousRunResult {
@@ -130,7 +162,13 @@ async function consider(
 ): Promise<void> {
   const { finding } = candidate
 
-  const plan = planFindingPatch(finding, "conform", files)
+  const mechanical = planFindingPatch(finding, "conform", files)
+
+  // The Fixer is never the first thing asked. It gets what a substitution
+  // matched character for character could not put right, and it is told the
+  // reason so it does not solve a problem that was already solved.
+  const plan = mechanical.blocked !== null ? await askTheFixer(input, candidate, files, mechanical, logger) : mechanical
+
   const decision = isAutonomousFix({
     finding,
     plan,
@@ -163,6 +201,7 @@ async function consider(
       opener: "run",
       repositories: input.repositories,
       sourceFiles: files,
+      plan,
       logger,
       dryRun: input.dryRun,
     })
@@ -179,6 +218,52 @@ async function consider(
     const message = actuationError(error)
     result.failed.push({ findingId: finding.id, message })
     logger.error("actuate.failed", { findingId: finding.id, message })
+  }
+}
+
+/**
+ * The Fixer's plan for a finding the mechanical patcher blocked, or the
+ * blocked plan back unchanged.
+ *
+ * Never throws and never lets a failure reach the run. A Fixer that is not
+ * wired, that finds nothing, or that falls over leaves the finding exactly
+ * where it already was: blocked, reported, and waiting for a person.
+ */
+async function askTheFixer(
+  input: AutonomousRunInput,
+  candidate: AutonomousCandidate,
+  files: readonly SourceFile[],
+  mechanical: PatchPlan,
+  logger: ActuationLogger,
+): Promise<PatchPlan> {
+  if (!input.proposeFix) return mechanical
+
+  const { finding } = candidate
+  const screen = await input.repositories.screens.get(finding.screenId)
+
+  try {
+    const proposal = await input.proposeFix({
+      finding,
+      files,
+      blocked: mechanical.blocked ?? "",
+      route: screen?.route ?? "",
+    })
+
+    logger.log("actuate.fixer", {
+      findingId: finding.id,
+      blocked: mechanical.blocked,
+      proposed: proposal.plan !== null,
+      files: proposal.plan?.files.map((file) => file.path) ?? [],
+      reasons: proposal.reasons,
+    })
+
+    return proposal.plan ?? mechanical
+  } catch (error) {
+    logger.error("actuate.fixer_failed", {
+      findingId: finding.id,
+      message: actuationError(error),
+    })
+    return mechanical
   }
 }
 

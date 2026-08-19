@@ -227,18 +227,33 @@ take exactly the same path.
 pnpm worker -- resolve --finding <findingId> --action conform
 ```
 
-**What Drift patches** is the mechanical class and only that: a label's text and
-a value that missed its token, substituted literal for literal. The match is
-bounded, so `Next` inside `Next.js` is not a label and `#ff0000` inside
-`#ff0000ff` is not a colour. Anything needing a judgment about code structure is
-permanently out of scope (`AGENTS.md` section 10) and waits for a person.
+**What Drift patches** falls into two classes (`AGENTS.md` section 10a). The
+mechanical class is a label's text and a value that missed its token,
+substituted literal for literal. The match is bounded, so `Next` inside
+`Next.js` is not a label and `#ff0000` inside `#ff0000ff` is not a colour. A
+substitution planned this way cannot be wrong about the code it edits, because
+it never read it.
+
+**The Fixer** is the second class, and it is the only part of Drift that reads
+a watched repo's source. It is asked only after the mechanical patcher has
+tried and failed, and it is told why, so it spends its attention on the case a
+substitution cannot reach: a value the source never writes down, because it is
+composed at runtime or held in a variable the screen resolves. It searches and
+reads the repo through pure functions over the files already fetched, and
+everything it proposes goes through the fix gate before it leaves the flow. The
+gate proves an edit applies to a file the Fixer actually read, matches there
+exactly once, stays inside its bounds, and arrives at the value the finding
+named. It cannot prove the result compiles, so a fix from the Fixer opens as a
+**draft** and a person merges it.
 
 **Unprompted pull requests** are a narrower subset again: a token finding,
 nobody has decided anything about it, it names the token it missed, and the
-patch is exactly one occurrence in one file sitting close enough to that token
-that snapping it is a correction rather than a choice. The one function drawing
-that line is `isAutonomousFix`, and every finding a run raises is logged under
-`actuate.decision` with the reason it was or was not acted on.
+value sits close enough to that token that snapping it is a correction rather
+than a choice. A mechanical patch also has to be exactly one occurrence in one
+file; a Fixer patch has to be one file, its edits already bounded by the gate.
+The one function drawing that line is `isAutonomousFix`, for both classes, and
+every finding a run raises is logged under `actuate.decision` with the reason
+it was or was not acted on.
 
 **Branches** in the watched repo: `drift/fix-<findingId>` carries one patch and
 is what the pull request proposes; `drift/rules` carries `drift.rules.md`;

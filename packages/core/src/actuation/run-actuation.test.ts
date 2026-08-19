@@ -19,6 +19,7 @@ import {
   TOKEN_FINDING,
   screen,
 } from "./fixtures"
+import type { PatchPlan } from "./patch"
 import { actuationCandidates, openAutonomousPullRequests } from "./run-actuation"
 
 const REPO_FILES = Object.fromEntries(SOURCE_FILES.map((file) => [file.path, file.text]))
@@ -49,6 +50,126 @@ const run = (candidates: Parameters<typeof openAutonomousPullRequests>[0]["candi
     candidates,
     repositories,
   })
+
+/**
+ * A finding whose value no source file writes, which is what sends a run to
+ * the Fixer: the mechanical patcher can only match a literal, and there is no
+ * literal here to match.
+ */
+const UNWRITTEN_FINDING = {
+  ...TOKEN_FINDING,
+  id: "finding-unwritten",
+  evidence: { ...TOKEN_FINDING.evidence, observedValue: "rgb(1, 2, 3)" },
+}
+
+/** What the Fixer's gate would have returned, had a model been in the loop. */
+function fixerPlan(): PatchPlan {
+  const file = SOURCE_FILES[0]!
+  return {
+    kind: "value",
+    author: "model",
+    from: "rgb(1, 2, 3)",
+    to: NEAREST_TOKEN.value,
+    files: [
+      {
+        path: file.path,
+        before: file.text,
+        after: file.text.replace("#FF0000", NEAREST_TOKEN.value),
+        occurrences: 1,
+      },
+    ],
+    occurrences: 1,
+    blocked: null,
+  }
+}
+
+describe("the Fixer, on a finding no substitution could reach", () => {
+  const close = new Map([[UNWRITTEN_FINDING.id, 0.05]])
+
+  beforeEach(() => {
+    repositories = fakeRepositories({
+      projects: [PROJECT],
+      findings: [structuredClone(UNWRITTEN_FINDING)],
+      screens: [screen({ screenshotPath: "no-screenshot-in-tests" })],
+    })
+  })
+
+  const runWithFixer = (proposeFix: Parameters<typeof openAutonomousPullRequests>[0]["proposeFix"]) =>
+    openAutonomousPullRequests({
+      octokit: github.octokit,
+      project: PROJECT,
+      candidates: actuationCandidates([UNWRITTEN_FINDING], close),
+      repositories,
+      proposeFix,
+    })
+
+  it("is not asked at all while a mechanical patch is possible", async () => {
+    let asked = 0
+    await openAutonomousPullRequests({
+      octokit: github.octokit,
+      project: PROJECT,
+      candidates: actuationCandidates([TOKEN_FINDING], new Map([[TOKEN_FINDING.id, 0.05]])),
+      repositories: fakeRepositories({
+        projects: [PROJECT],
+        findings: [structuredClone(TOKEN_FINDING)],
+        screens: [screen({ screenshotPath: "no-screenshot-in-tests" })],
+      }),
+      proposeFix: async () => {
+        asked += 1
+        return { plan: null, reasons: [] }
+      },
+    })
+
+    expect(asked).toBe(0)
+  })
+
+  it("is told why the mechanical patcher gave up", async () => {
+    let blocked = ""
+    await runWithFixer(async (request) => {
+      blocked = request.blocked
+      return { plan: null, reasons: [] }
+    })
+
+    expect(blocked).toContain("rgb(1, 2, 3)")
+  })
+
+  it("opens what it proposes, as a draft", async () => {
+    const result = await runWithFixer(async () => ({ plan: fixerPlan(), reasons: [] }))
+
+    expect(result.opened).toHaveLength(1)
+    expect(github.pulls).toHaveLength(1)
+    expect(github.pulls[0]?.draft).toBe(true)
+    expect(github.pulls[0]?.head).toBe(fixBranchName(UNWRITTEN_FINDING.id))
+  })
+
+  it("leaves the finding waiting when the Fixer declines", async () => {
+    const result = await runWithFixer(async () => ({
+      plan: null,
+      reasons: ["The Fixer said: the value is composed at runtime."],
+    }))
+
+    expect(result.opened).toHaveLength(0)
+    expect(result.waiting[0]?.reason).toContain("rgb(1, 2, 3)")
+    expect(github.pulls).toHaveLength(0)
+  })
+
+  it("survives a Fixer that falls over, and still reports the finding", async () => {
+    const result = await runWithFixer(async () => {
+      throw new Error("Gemini is down.")
+    })
+
+    expect(result.failed).toHaveLength(0)
+    expect(result.waiting).toHaveLength(1)
+    expect(github.pulls).toHaveLength(0)
+  })
+
+  it("opens nothing at all when no Fixer is wired", async () => {
+    const result = await runWithFixer(undefined)
+
+    expect(result.opened).toHaveLength(0)
+    expect(result.waiting).toHaveLength(1)
+  })
+})
 
 describe("actuationCandidates", () => {
   it("asks about token findings that name a token, and about nothing else", () => {

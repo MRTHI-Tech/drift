@@ -17,6 +17,9 @@ export { GEMINI_EMBEDDING_MODEL, GEMINI_MODEL } from "./models"
 export {
   ARCHETYPE_SIMILARITY,
   DEFAULT_PATTERN_SEVERITY,
+  MAX_FIX_TURNS,
+  MAX_READ_LINES,
+  MAX_SEARCH_HITS,
   MAX_SENTENCE_LENGTH,
   MIN_SCREENS_PER_ARCHETYPE,
   PATTERN_SEVERITY,
@@ -80,6 +83,15 @@ export {
 } from "./pattern-findings"
 
 export * from "./flows"
+
+export { fixerFor } from "./fixer"
+export {
+  listRepoFiles,
+  readRepoFile,
+  searchRepo,
+  type RepoFileSlice,
+  type RepoSearchHit,
+} from "./repo-tools"
 
 export {
   extractionSlice,

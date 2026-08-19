@@ -66,7 +66,7 @@ Any finding proposed by a model call must be verified against the `computedStyle
 ## 4. Model usage rules
 
 - Deterministic first, always. Rendering, extraction, token diffing, dedupe, and signature construction never call a model.
-- Model calls are limited to: archetype classification, pattern-drift judgment over pre-computed candidates, convention labelling, and PR/rules-file prose.
+- Model calls are limited to: archetype classification, pattern-drift judgment over pre-computed candidates, convention labelling, PR/rules-file prose, and the Fixer (section 10a). The Fixer is the only model call that reads a watched repo's source, the only one that calls tools, and the only one whose output is code.
 - Every model call uses structured output (JSON schema via Genkit) and is wrapped in a single retry with backoff. A second failure returns empty, never throws into the pipeline.
 - Prompts live in `packages/agent/src/prompts/` as named exports, one file per flow. No inline prompt strings.
 
@@ -120,11 +120,22 @@ The shape it takes is deliberate and is the thing to preserve: **Drift never dec
 
 Two categories, and nothing outside them. The first governs fixes and is permanently bounded. The second governs the files Drift itself authors, and exists because the rules file was already one of them.
 
-### 10a. The mechanical patch class: fixes to a finding
+### 10a. Fixes to a finding: two classes, and what bounds each
 
-Drift changes two things in a watched repo's own source and nothing else: the text of a label, and a value that missed its token. Both are substitutions of one literal for another, planned by matching that literal character for character in the repo's own source, with the match bounded so a label counts only as a whole string literal or a whole element's text and a value counts only where it is not part of a longer one.
+**Amended 2026-08-19.** This section previously admitted one class and said the rest was out of scope "for good". That was reversed deliberately, with the reasoning below, and the sentence it replaces is quoted here so nobody has to read the history to know what changed: *"Everything else is out of scope for the agent for good, not until a later phase."*
 
-Everything else is out of scope for the agent for good, not until a later phase. Drift does not parse the watched repo's code, restructure it, move a value into a token, decide where a value should come from, edit the token file, or touch anything whose correctness depends on what the code around it means. A finding whose fix needs any of that is reported with its evidence and waits for a person, which is a correct outcome and not a failure.
+The reversal is not a relaxation. The old boundary carried real safety, and a second boundary was built before it was removed. What follows is both classes and the bound on each.
+
+**The mechanical class.** Drift changes two things in a watched repo's own source by substitution: the text of a label, and a value that missed its token. Both are one literal for another, planned by matching that literal character for character, with the match bounded so a label counts only as a whole string literal or a whole element's text and a value counts only where it is not part of a longer one. This class is safe for a reason worth naming: a substitution planned this way cannot be wrong about the code it edits, because it never read it.
+
+**The model-authored class: the Fixer.** A finding the mechanical patcher cannot plan goes to `proposeFix` in `packages/agent/src/flows/propose-fix.ts`, which reads the repo's source through tools and writes the correction. This is the only place in Drift that reads code somebody else wrote. It is bounded by four things, and all four hold together or the class is not safe:
+
+- **It is never asked first.** `planFindingPatch` runs and fails before the Fixer is called, and the Fixer is told the reason. Anything a substitution can do, a substitution does.
+- **It sees a fixed set of files.** The tools in `packages/agent/src/repo-tools.ts` are pure functions over the files `fetchSourceFiles` already fetched and already filtered. There is no network behind them, no path out of the set, and no way for the repo to change underneath a fix.
+- **Everything it proposes goes through the fix gate**, `gateProposedFix` in `packages/core/src/actuation/fix-gate.ts`, and the gate is inside the flow rather than beside it, exactly as the reconciliation gate is inside `judgePatternDrift`. There is no caller that can go around it. The gate is what stands where the old refusal stood, and its rules are stated in that file.
+- **What it produces is a proposal.** A plan the Fixer wrote is marked `author: "model"`, and it opens as a **draft** pull request. The gate can prove an edit applies, is bounded, and touches the value the finding named. It cannot prove the result compiles, and Drift does not build the watched repo, so a person opens it.
+
+**What is still out of scope, and this part did not change.** Drift does not edit the token file, does not move a value into a token, does not restructure or rename anything, and does not touch a test, a snapshot, a lockfile, or a generated file. The Fixer changes the value a finding is about and nothing else. A finding whose fix needs more than that is reported with its evidence and waits for a person, which is a correct outcome and not a failure.
 
 ### 10b. Files Drift authors: the setup class
 
@@ -144,7 +155,7 @@ The limits are strict and hold with no exception:
 
 ### 10c. What holds across both
 
-Within 10a, a narrower subset may go out **unprompted**, and the boundary is one named function, `isAutonomousFix` in `packages/core/src/actuation/autonomy.ts`. It is one function so that the whole of Drift's autonomy is auditable by reading one file, and so that widening it is a visible change to one place. It returns a reason either way and every caller logs it. Nothing else in the codebase may decide to open a pull request unprompted.
+Within 10a, a narrower subset may go out **unprompted**, and the boundary is one named function, `isAutonomousFix` in `packages/core/src/actuation/autonomy.ts`. This is true of both classes. A plan the Fixer wrote is decided by that same function and by nothing else, under conditions of its own: it must touch one file, and what it opens is a draft. Adding the second class did not add a second place where autonomy is decided, which was the point of having one. It is one function so that the whole of Drift's autonomy is auditable by reading one file, and so that widening it is a visible change to one place. It returns a reason either way and every caller logs it. Nothing else in the codebase may decide to open a pull request unprompted.
 
 Nothing in 10b is ever unprompted, and `isAutonomousFix` is not consulted for it. Every 10b write is the direct result of a person doing something: regenerating the rules file follows a resolution somebody chose, and proposing a config follows somebody adding a project and asking for it. An unprompted write is a decision the agent made, and the agent makes no decisions about files it authors.
 

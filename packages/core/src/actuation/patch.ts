@@ -38,9 +38,22 @@ export interface FileEdit {
   occurrences: number
 }
 
+/**
+ * Who planned a patch, and therefore how much it is trusted.
+ *
+ * `mechanical` is a substitution matched character for character in the repo's
+ * own source, which cannot be wrong about code it never read. `model` is a
+ * plan the Fixer wrote after reading the code, which has been through the fix
+ * gate and is still a proposal: it is opened as a draft and is never
+ * unprompted. Everything downstream can tell the two apart without asking how
+ * either was made.
+ */
+export type PatchAuthor = "mechanical" | "model"
+
 /** What a patch would do, computed without writing anything anywhere. */
 export interface PatchPlan {
   kind: PatchKind
+  author: PatchAuthor
   /** The literal being replaced, as the finding records it. */
   from: string
   /** The literal replacing it. */
@@ -103,6 +116,7 @@ export function planPatch(input: PlanPatchInput): PatchPlan {
   const max = input.maxOccurrences ?? MAX_PATCH_OCCURRENCES
   const empty = (blocked: string): PatchPlan => ({
     kind: input.kind,
+    author: "mechanical",
     from: input.from,
     to: input.to,
     files: [],
@@ -151,7 +165,7 @@ export function planPatch(input: PlanPatchInput): PatchPlan {
     )
   }
 
-  return { kind: input.kind, from, to, files, occurrences, blocked: null }
+  return { kind: input.kind, author: "mechanical", from, to, files, occurrences, blocked: null }
 }
 
 /** The files a plan touches, as the paths a pull request body lists. */

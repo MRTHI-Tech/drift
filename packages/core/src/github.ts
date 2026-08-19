@@ -791,6 +791,12 @@ export interface PullRequestInput {
   base: string
   title: string
   body: string
+  /**
+   * Opened as a draft. A fix the Fixer wrote is a proposal rather than a
+   * change Drift is confident in, and a draft is how GitHub says so in the
+   * only place a reviewer is actually looking (AGENTS.md section 10a).
+   */
+  draft?: boolean
 }
 
 export interface PullRequestRef {
@@ -807,7 +813,7 @@ export interface PullRequestRef {
  */
 export async function openPullRequest(
   octokit: Octokit,
-  { repo, head, base, title, body }: PullRequestInput,
+  { repo, head, base, title, body, draft = false }: PullRequestInput,
 ): Promise<PullRequestRef> {
   assertRepoAllowed(repo)
   const target = parseRepo(repo)
@@ -824,7 +830,14 @@ export async function openPullRequest(
   }
 
   try {
-    const response = await octokit.rest.pulls.create({ ...target, head, base, title, body })
+    const response = await octokit.rest.pulls.create({
+      ...target,
+      head,
+      base,
+      title,
+      body,
+      draft,
+    })
     return { number: response.data.number, url: response.data.html_url, created: true }
   } catch (cause) {
     throw new GitHubError(`Could not open a pull request on ${repo}. ${describe(cause)}`, { cause })

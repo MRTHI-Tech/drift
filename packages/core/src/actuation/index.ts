@@ -16,6 +16,8 @@ export {
   EVIDENCE_BRANCH,
   EVIDENCE_DIRECTORY,
   MAX_AUTONOMOUS_DISTANCE,
+  MAX_FIX_FILES,
+  MAX_FIX_LINES,
   MAX_PATCH_OCCURRENCES,
   OPENED_BY_DRIFT,
   PATCHABLE_GROUPS,
@@ -30,6 +32,14 @@ export { isAutonomousFix, type AutonomyDecision, type AutonomyInput } from "./au
 export { evidenceSentence, tokenSentence } from "./evidence"
 
 export {
+  gateProposedFix,
+  type FixDropReason,
+  type FixGateInput,
+  type FixGateResult,
+  type ProposedEdit,
+} from "./fix-gate"
+
+export {
   silentActuationLogger,
   actuationError,
   type ActuationLogger,
@@ -41,6 +51,7 @@ export {
   planFindingPatch,
   planPatch,
   type FileEdit,
+  type PatchAuthor,
   type PatchDirection,
   type PatchKind,
   type PatchPlan,
@@ -103,4 +114,7 @@ export {
   type AutonomousCandidate,
   type AutonomousRunInput,
   type AutonomousRunResult,
+  type FixProposal,
+  type FixProposer,
+  type FixRequest,
 } from "./run-actuation"

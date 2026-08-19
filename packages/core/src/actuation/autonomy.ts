@@ -88,7 +88,19 @@ export function isAutonomousFix(input: AutonomyInput): AutonomyDecision {
     return no(plan.blocked)
   }
 
-  if (plan.occurrences !== 1 || plan.files.length !== 1) {
+  // A plan the Fixer wrote has already been through the fix gate, which bounds
+  // it and proves it touches the value this finding named. What the gate cannot
+  // prove is that the result compiles, so the plan still has to be one file and
+  // what it opens is still a draft. Everything below this applies to it too:
+  // the distance limit is about the value, not about who wrote the patch.
+  if (plan.author === "model") {
+    if (plan.files.length !== 1) {
+      return no(
+        `The Fixer wrote a change across ${plan.files.length} files. ` +
+          "Only a change to one file is opened unprompted.",
+      )
+    }
+  } else if (plan.occurrences !== 1 || plan.files.length !== 1) {
     return no(
       `${plan.from} appears ${plan.occurrences} times in ${plan.files.length} files. ` +
         "Only a single occurrence is changed unprompted.",
@@ -108,11 +120,19 @@ export function isAutonomousFix(input: AutonomyInput): AutonomyDecision {
     )
   }
 
+  const where = plan.files[0]?.path ?? "one file"
+  if (plan.author === "model") {
+    return {
+      autonomous: true,
+      reason:
+        `The Fixer wrote ${plan.occurrences} edits to ${where}, ` +
+        `arriving at ${plan.to}, ${round(distance)} from ${expectedSource}. Opens as a draft.`,
+    }
+  }
+
   return {
     autonomous: true,
-    reason:
-      `${plan.from} is one occurrence in ${plan.files[0]?.path ?? "one file"}, ` +
-      `${round(distance)} from ${expectedSource}.`,
+    reason: `${plan.from} is one occurrence in ${where}, ${round(distance)} from ${expectedSource}.`,
   }
 }
 

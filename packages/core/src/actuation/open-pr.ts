@@ -47,6 +47,12 @@ export interface OpenFixPullRequestInput {
   repositories: Repositories
   /** Plan against these rather than fetching the repo again. */
   sourceFiles?: readonly SourceFile[]
+  /**
+   * Use this plan rather than planning one. The Fixer's plan arrives this way:
+   * it has already been through the fix gate, and re-planning it mechanically
+   * here would throw away the only version of it that exists.
+   */
+  plan?: PatchPlan
   logger?: ActuationLogger
   /** Plan everything, write nothing, anywhere. */
   dryRun?: boolean
@@ -82,7 +88,7 @@ export async function openFixPullRequest(
   const files =
     input.sourceFiles ??
     (await fetchSourceFiles(input.octokit, { repo: project.repo, ref: project.defaultBranch }))
-  const plan = planFindingPatch(finding, input.direction, files)
+  const plan = input.plan ?? planFindingPatch(finding, input.direction, files)
 
   logger.log("actuate.planned", {
     findingId: finding.id,
@@ -90,6 +96,7 @@ export async function openFixPullRequest(
     kind: plan.kind,
     from: plan.from,
     to: plan.to,
+    author: plan.author,
     occurrences: plan.occurrences,
     files: plan.files.map((file) => file.path),
     blocked: plan.blocked,
@@ -132,6 +139,7 @@ export async function openFixPullRequest(
     base: project.defaultBranch,
     title: pullRequestTitle(compose),
     body: pullRequestBody(compose),
+    draft: plan.author === "model",
   })
 
   await input.repositories.findings.update(finding.id, { prNumber: pullRequest.number })
@@ -251,6 +259,7 @@ function emptyPlan(direction: PatchDirection, finding: Finding): PatchPlan {
   const { observedValue, expectedValue } = finding.evidence
   return {
     kind: "value",
+    author: "mechanical",
     from: direction === "conform" ? observedValue : expectedValue,
     to: direction === "conform" ? expectedValue : observedValue,
     files: [],
