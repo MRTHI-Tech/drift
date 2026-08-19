@@ -152,12 +152,22 @@ the label a family is filed under. Screens are compared within one viewport,
 because a route at 390px and the same route at 1440px are different layouts.
 
 **Conventions** are counted, not concluded. Each screen is projected onto a few
-element-scoped properties (`cta.label`, `cta.size`, `cta.radius`,
-`heading.size`, `heading.weight`), each carrying the selector its value was read
-from, and a value becomes a convention when it is the single most common one
-across three or more screens of the archetype. A tie means the family has not
-settled and states nothing. The model writes the convention's name and touches
-nothing else about it.
+element-scoped properties (`cta.label`, `cta.voice`, `cta.size`, `cta.radius`,
+`heading.size`, `heading.weight`, `heading.tone`), each carrying the selector
+its value was read from, and a value becomes a convention when it is the single
+most common one across three or more screens of the archetype. A tie means the
+family has not settled and states nothing. The model writes the convention's
+name and touches nothing else about it.
+
+Two of those properties are read out of the recorded text rather than looked up
+in it. `cta.voice` says whether an action names itself or could sit on any
+screen, and `heading.tone` says whether a heading speaks to a person, keeps its
+distance, or does neither. Both are word lists in
+`packages/core/src/analysis/copy.ts`, no model call, and both exist because a
+convention sometimes has to be stated over a quality that no two screens spell
+the same way. An onboarding flow that opens "Hey, how are you?" and four screens
+later asks for "Personal information" shares no word between those two lines.
+Counting the words finds nothing. Counting the register finds it.
 
 **Pattern drift** is measured before a model sees it. A screen's profile is
 compared against its archetype's conventions and the disagreements become

@@ -1,3 +1,4 @@
+import type { Screen } from "@drift/core"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -13,13 +14,16 @@ import {
 } from "./fixtures"
 import { buildProfile, firstHeadingSelector, profileValue, terminalActionSelector } from "./profile"
 
-function profileOf(step: number) {
-  const screen = stepScreen(step)
+function profileOfScreen(screen: Screen) {
   return buildProfile({
     signature: screen.signature!,
     computedStyles: screen.computedStyles,
     text: screen.text,
   })
+}
+
+function profileOf(step: number) {
+  return profileOfScreen(stepScreen(step))
 }
 
 describe("terminalActionSelector", () => {
@@ -127,6 +131,30 @@ describe("cta.voice", () => {
   })
 })
 
+describe("heading.tone", () => {
+  it("reads the register the heading is written in", () => {
+    const warm = stepScreen(2)
+    warm.text[HEADING_SELECTOR] = "Hey, how are you?"
+
+    expect(profileValue(profileOfScreen(warm), "heading.tone")?.value).toBe("warm")
+  })
+
+  it("reads a screen that has turned into a form as formal", () => {
+    const formal = stepScreen(2)
+    formal.text[HEADING_SELECTOR] = "Personal information"
+
+    expect(profileValue(profileOfScreen(formal), "heading.tone")?.value).toBe("formal")
+  })
+
+  it("holds no tone on a screen with no heading", () => {
+    const computedStyles = stepStyles(1)
+    delete computedStyles[HEADING_SELECTOR]
+    const screen = stepScreen(1, { computedStyles })
+
+    expect(profileValue(profileOfScreen(screen), "heading.tone")).toBeNull()
+  })
+})
+
 describe("firstHeadingSelector", () => {
   it("takes the topmost heading", () => {
     expect(firstHeadingSelector(stepStyles(1))).toBe(HEADING_SELECTOR)
@@ -154,6 +182,7 @@ describe("buildProfile", () => {
         value: CONVENTION_HEADING_SIZE,
       },
       { property: "heading.weight", kind: "style", selector: HEADING_SELECTOR, value: "700" },
+      { property: "heading.tone", kind: "derived", selector: HEADING_SELECTOR, value: "neutral" },
     ])
   })
 

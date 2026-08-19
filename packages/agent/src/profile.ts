@@ -14,6 +14,7 @@
  */
 
 import {
+  copyTone,
   HEADING_TAGS,
   labelVoice,
   type ComputedStyles,
@@ -73,6 +74,7 @@ export const PROFILE_PROPERTIES: readonly ProfileProperty[] = [
   { property: "cta.radius", kind: "style", styleProperty: "border-radius", reads: "last action corner radius" },
   { property: "heading.size", kind: "style", styleProperty: "font-size", reads: "first heading type size" },
   { property: "heading.weight", kind: "style", styleProperty: "font-weight", reads: "first heading type weight" },
+  { property: "heading.tone", kind: "derived", styleProperty: null, reads: "heading tone" },
 ]
 
 const BY_NAME = new Map(PROFILE_PROPERTIES.map((entry) => [entry.property, entry]))
@@ -242,10 +244,12 @@ export function deriveValue(
   text: ScreenText,
   selector: string,
 ): string | null {
-  if (property !== "cta.voice") return null
-
   const label = resolveLabel(text, selector)
-  return label.length === 0 ? null : labelVoice(label)
+  if (label.length === 0) return null
+
+  if (property === "cta.voice") return labelVoice(label)
+  if (property === "heading.tone") return copyTone(label)
+  return null
 }
 
 function readStyle(

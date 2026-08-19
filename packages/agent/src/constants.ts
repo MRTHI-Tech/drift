@@ -43,6 +43,7 @@ export const MIN_SCREENS_PER_ARCHETYPE = 3
 export const PATTERN_SEVERITY: Record<string, number> = {
   "cta.label": 3,
   "cta.voice": 3,
+  "heading.tone": 3,
   "heading.size": 2,
   "cta.size": 2,
   "heading.weight": 2,
