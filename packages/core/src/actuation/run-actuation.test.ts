@@ -171,6 +171,120 @@ describe("the Fixer, on a finding no substitution could reach", () => {
   })
 })
 
+/** The same grey on another screen: one cause, two sightings. */
+function sighting(id: string, screenId: string, createdAt: string) {
+  return {
+    ...structuredClone(TOKEN_FINDING),
+    id,
+    screenId,
+    createdAt: new Date(createdAt),
+    dedupeKey: id.padEnd(64, "0"),
+  }
+}
+
+describe("actuationCandidates, on twelve screens with one problem", () => {
+  const first = sighting("f-a", "screen-a", "2026-08-07T10:00:00Z")
+  const second = sighting("f-b", "screen-b", "2026-08-07T11:00:00Z")
+  const third = sighting("f-c", "screen-c", "2026-08-07T12:00:00Z")
+  const distances = new Map([
+    ["f-a", 0.04],
+    ["f-b", 0.09],
+    ["f-c", 0.02],
+  ])
+
+  it("asks about the cause once rather than about each sighting", () => {
+    const candidates = actuationCandidates([first, second, third], distances)
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]?.siblingFindingIds).toEqual(["f-b", "f-c"])
+  })
+
+  it("takes the oldest sighting as the one to fix", () => {
+    const shuffled = actuationCandidates([third, first, second], distances)
+
+    expect(shuffled[0]?.finding.id).toBe("f-a")
+  })
+
+  it("carries the representative's own distance, not somebody else's", () => {
+    expect(actuationCandidates([third, first, second], distances)[0]?.nearestTokenDistance).toBe(
+      0.04,
+    )
+  })
+
+  it("picks the same representative however the findings arrive", () => {
+    const one = actuationCandidates([first, second, third], distances)[0]?.finding.id
+    const two = actuationCandidates([third, second, first], distances)[0]?.finding.id
+
+    expect(one).toBe(two)
+  })
+
+  it("keeps two different problems apart", () => {
+    const other = {
+      ...sighting("f-d", "screen-d", "2026-08-07T10:30:00Z"),
+      evidence: { ...TOKEN_FINDING.evidence, observedValue: "rgb(1, 2, 3)" },
+    }
+
+    const candidates = actuationCandidates([first, other], distances)
+
+    expect(candidates).toHaveLength(2)
+    expect(candidates.every((candidate) => candidate.siblingFindingIds.length === 0)).toBe(true)
+  })
+
+  it("leaves a lone sighting with no siblings", () => {
+    expect(actuationCandidates([first], distances)[0]?.siblingFindingIds).toEqual([])
+  })
+})
+
+describe("a pull request for a cause seen on several screens", () => {
+  // Rebuilt per test: opening a pull request writes `prNumber` onto the
+  // finding, and a shared object would carry that into the next test and be
+  // refused for already having one.
+  let first: ReturnType<typeof sighting>
+  let second: ReturnType<typeof sighting>
+
+  beforeEach(() => {
+    first = sighting("f-a", "screen-pricing", "2026-08-07T10:00:00Z")
+    second = sighting("f-b", "screen-two", "2026-08-07T11:00:00Z")
+    repositories = fakeRepositories({
+      projects: [PROJECT],
+      findings: [first, second],
+      screens: [
+        screen({ id: "screen-pricing", route: "/pricing", screenshotPath: "none" }),
+        screen({ id: "screen-two", route: "/checkout", screenshotPath: "none" }),
+      ],
+    })
+  })
+
+  it("opens one pull request, not one per screen", async () => {
+    await run(actuationCandidates([first, second], new Map([["f-a", 0.04]])))
+
+    expect(github.pulls).toHaveLength(1)
+  })
+
+  it("names every route the value renders on", async () => {
+    await run(actuationCandidates([first, second], new Map([["f-a", 0.04]])))
+
+    expect(github.pulls[0]?.body).toContain("/pricing")
+    expect(github.pulls[0]?.body).toContain("/checkout")
+    expect(github.pulls[0]?.body).toContain("fixes all of them")
+  })
+
+  it("writes the number onto every finding the fix closes", async () => {
+    await run(actuationCandidates([first, second], new Map([["f-a", 0.04]])))
+
+    const stored = repositories.stored.findings
+    expect(stored.find((f) => f.id === "f-a")?.prNumber).toBe(1)
+    expect(stored.find((f) => f.id === "f-b")?.prNumber).toBe(1)
+  })
+
+  it("says nothing about other screens when there are none", async () => {
+    await run(actuationCandidates([first], new Map([["f-a", 0.04]])))
+
+    expect(github.pulls[0]?.body).toContain("Seen on /pricing")
+    expect(github.pulls[0]?.body).not.toContain("fixes all of them")
+  })
+})
+
 describe("actuationCandidates", () => {
   it("asks about token findings that name a token, and about nothing else", () => {
     const candidates = actuationCandidates(
@@ -191,7 +305,7 @@ describe("actuationCandidates", () => {
 
 describe("openAutonomousPullRequests", () => {
   it("opens the pull request nobody asked for, when the boundary allows it", async () => {
-    const result = await run([{ finding: TOKEN_FINDING, nearestTokenDistance: 0.04 }])
+    const result = await run([{ finding: TOKEN_FINDING, siblingFindingIds: [], nearestTokenDistance: 0.04 }])
 
     expect(result.opened).toHaveLength(1)
     expect(result.opened[0]?.prNumber).toBe(1)
@@ -202,20 +316,20 @@ describe("openAutonomousPullRequests", () => {
   })
 
   it("says it opened the pull request without being asked", async () => {
-    await run([{ finding: TOKEN_FINDING, nearestTokenDistance: 0.04 }])
+    await run([{ finding: TOKEN_FINDING, siblingFindingIds: [], nearestTokenDistance: 0.04 }])
 
     expect(github.pulls[0]?.body).toContain("without being asked")
     expect(github.pulls[0]?.body).toContain("Opened by Drift.")
   })
 
   it("stores the number on the finding", async () => {
-    await run([{ finding: TOKEN_FINDING, nearestTokenDistance: 0.04 }])
+    await run([{ finding: TOKEN_FINDING, siblingFindingIds: [], nearestTokenDistance: 0.04 }])
 
     expect(repositories.stored.findings[0]?.prNumber).toBe(1)
   })
 
   it("leaves everything the boundary refused waiting, with its reason", async () => {
-    const result = await run([{ finding: TOKEN_FINDING, nearestTokenDistance: 0.9 }])
+    const result = await run([{ finding: TOKEN_FINDING, siblingFindingIds: [], nearestTokenDistance: 0.9 }])
 
     expect(result.opened).toEqual([])
     expect(result.waiting[0]?.reason).toMatch(/a choice somebody made/)
@@ -225,7 +339,7 @@ describe("openAutonomousPullRequests", () => {
   it("opens nothing against a repo that is not on the allowlist", async () => {
     process.env.GITHUB_REPO_ALLOWLIST = "someone-else/web"
 
-    const result = await run([{ finding: TOKEN_FINDING, nearestTokenDistance: 0.01 }])
+    const result = await run([{ finding: TOKEN_FINDING, siblingFindingIds: [], nearestTokenDistance: 0.01 }])
 
     expect(result.opened).toEqual([])
     expect(result.failed).toEqual([])
@@ -242,11 +356,11 @@ describe("openAutonomousPullRequests", () => {
   })
 
   it("never opens a second pull request for the same finding", async () => {
-    const candidate = { finding: TOKEN_FINDING, nearestTokenDistance: 0.04 }
+    const candidate = { finding: TOKEN_FINDING, siblingFindingIds: [], nearestTokenDistance: 0.04 }
     await run([candidate])
 
     const again = await run([
-      { finding: repositories.stored.findings[0]!, nearestTokenDistance: 0.04 },
+      { finding: repositories.stored.findings[0]!, siblingFindingIds: [], nearestTokenDistance: 0.04 },
     ])
 
     expect(again.opened).toEqual([])

@@ -48,6 +48,12 @@ export interface OpenFixPullRequestInput {
   /** Plan against these rather than fetching the repo again. */
   sourceFiles?: readonly SourceFile[]
   /**
+   * Other open findings with the same cause. They are named on the pull
+   * request and every one of them is given its number, so a fix that closes
+   * twelve sightings does not leave eleven of them looking untouched.
+   */
+  siblingFindingIds?: readonly string[]
+  /**
    * Use this plan rather than planning one. The Fixer's plan arrives this way:
    * it has already been through the fix gate, and re-planning it mechanically
    * here would throw away the only version of it that exists.
@@ -108,6 +114,8 @@ export async function openFixPullRequest(
 
   const images = await uploadEvidence({ ...input, screen, logger })
 
+  const siblings = await siblingScreens(input)
+
   const compose: ComposeInput = {
     finding,
     plan,
@@ -117,6 +125,7 @@ export async function openFixPullRequest(
     before: images.before,
     after: images.after,
     opener: input.opener,
+    alsoOn: siblings.routes,
   }
 
   await ensureBranch(input.octokit, {
@@ -143,6 +152,9 @@ export async function openFixPullRequest(
   })
 
   await input.repositories.findings.update(finding.id, { prNumber: pullRequest.number })
+  for (const siblingId of siblings.findingIds) {
+    await input.repositories.findings.update(siblingId, { prNumber: pullRequest.number })
+  }
 
   logger.log("actuate.pull_request", {
     findingId: finding.id,
@@ -249,6 +261,30 @@ function caption(screen: Screen, when: "now" | "already"): string {
   return when === "now"
     ? `${screen.route} at ${screen.viewport}, as it renders now.`
     : `${screen.route} at ${screen.viewport}, which already renders the value being moved to.`
+}
+
+/**
+ * The other sightings of this cause, as routes to name and ids to write back
+ * to. A sibling whose finding or screen is gone is dropped quietly: it is one
+ * line of a pull request body, and losing it is not worth failing a fix over.
+ */
+async function siblingScreens(
+  input: OpenFixPullRequestInput,
+): Promise<{ routes: string[]; findingIds: string[] }> {
+  const ids = input.siblingFindingIds ?? []
+  const routes: string[] = []
+  const findingIds: string[] = []
+
+  for (const id of ids) {
+    const sibling = await input.repositories.findings.get(id)
+    if (!sibling) continue
+    findingIds.push(id)
+
+    const screen = await input.repositories.screens.get(sibling.screenId)
+    if (screen && !routes.includes(screen.route)) routes.push(screen.route)
+  }
+
+  return { routes: routes.sort(), findingIds }
 }
 
 function skip(branch: string, plan: PatchPlan, reason: string): PullRequestResult {

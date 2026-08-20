@@ -15,6 +15,7 @@
 
 import type { Octokit } from "@octokit/rest"
 
+import { causeKeyOf } from "../dedupe"
 import { fetchSourceFiles, isRepoAllowed, type SourceFile } from "../github"
 import type { Repositories } from "../repositories"
 import type { Finding, Project, Screen } from "../types"
@@ -26,6 +27,17 @@ import { planFindingPatch, type PatchPlan } from "./patch"
 /** One finding a run raised, with what the diff knew when it raised it. */
 export interface AutonomousCandidate {
   finding: Finding
+  /**
+   * Every other open finding with the same cause: the same value, missing the
+   * same token, on a different screen. Empty when this sighting is the only
+   * one.
+   *
+   * They are carried rather than dropped because they are all true and all
+   * still open, and one fix closes all of them. What must not happen is a
+   * pull request for the first one that leaves the other eleven sitting there
+   * looking unaddressed.
+   */
+  siblingFindingIds: string[]
   /**
    * How far the observed value sits from the token it would be snapped to:
    * OKLab distance for a colour, pixels for a length. Only the run that
@@ -213,6 +225,7 @@ async function consider(
       opener: "run",
       repositories: input.repositories,
       sourceFiles: files,
+      siblingFindingIds: candidate.siblingFindingIds,
       plan,
       logger,
       dryRun: input.dryRun,
@@ -299,15 +312,52 @@ export function observedTextOf(screen: Screen | null, selector: string | null): 
   return parts.join(" ").replace(/\s+/g, " ").trim()
 }
 
-/** The findings of a run that are worth asking the boundary about at all. */
+/**
+ * The findings of a run that are worth asking the boundary about at all, one
+ * per cause rather than one per sighting.
+ *
+ * Findings stay per screen, which is right: the drift really is on each of
+ * them. What is asked and what is opened is per cause, because the same value
+ * missing the same token on twelve screens is one mistake in one place, and
+ * asking the Fixer about it twelve times would spend twelve model calls to
+ * write the same line and open twelve pull requests carrying it.
+ *
+ * The representative is the oldest finding of its cause, and the tie breaks on
+ * the id, so the same run always picks the same one and a pull request keeps
+ * its branch across runs.
+ */
 export function actuationCandidates(
   findings: readonly Finding[],
   distances: ReadonlyMap<string, number>,
 ): AutonomousCandidate[] {
-  return findings
-    .filter((finding) => finding.type === "token" && finding.evidence.expectedSource !== null)
-    .map((finding) => ({
-      finding,
-      nearestTokenDistance: distances.get(finding.id) ?? null,
-    }))
+  const eligible = findings.filter(
+    (finding) => finding.type === "token" && finding.evidence.expectedSource !== null,
+  )
+
+  const causes = new Map<string, Finding[]>()
+  for (const finding of eligible) {
+    const key = causeKeyOf(finding)
+    const group = causes.get(key)
+    if (group) group.push(finding)
+    else causes.set(key, [finding])
+  }
+
+  const candidates: AutonomousCandidate[] = []
+  for (const group of causes.values()) {
+    const ordered = [...group].sort(
+      (left, right) =>
+        left.createdAt.getTime() - right.createdAt.getTime() ||
+        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+    )
+    const [representative, ...siblings] = ordered
+
+    candidates.push({
+      finding: representative!,
+      siblingFindingIds: siblings.map((finding) => finding.id),
+      // The representative's own distance, since it is the one being fixed.
+      nearestTokenDistance: distances.get(representative!.id) ?? null,
+    })
+  }
+
+  return candidates
 }

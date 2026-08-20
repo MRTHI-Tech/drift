@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { dedupeKey, type DedupeKeyInput } from "./dedupe"
+import { causeKey, causeKeyOf, dedupeKey, type DedupeKeyInput } from "./dedupe"
 
 const base: DedupeKeyInput = {
   projectId: "proj_1",
@@ -48,3 +48,49 @@ describe("dedupeKey", () => {
     expect(dedupeKey(base)).toMatch(/^[0-9a-f]{64}$/)
   })
 })
+
+describe("causeKey", () => {
+  const base = {
+    projectId: "proj1",
+    property: "background-color",
+    observedValue: "rgb(242, 242, 242)",
+    expectedValue: "#F0EDE8",
+  }
+
+  it("is the same for the same problem on two different screens", () => {
+    // The route is not an input, which is the entire point of it.
+    expect(causeKey(base)).toBe(causeKey({ ...base }))
+  })
+
+  it("separates two screens drifting to the same value from different tokens", () => {
+    expect(causeKey(base)).not.toBe(causeKey({ ...base, expectedValue: "#FFFFFF" }))
+  })
+
+  it("separates two properties holding the same value", () => {
+    expect(causeKey(base)).not.toBe(causeKey({ ...base, property: "color" }))
+  })
+
+  it("never crosses projects", () => {
+    expect(causeKey(base)).not.toBe(causeKey({ ...base, projectId: "proj2" }))
+  })
+
+  it("cannot be confused by where one field ends and the next begins", () => {
+    expect(causeKey({ ...base, property: "a", observedValue: "bc" })).not.toBe(
+      causeKey({ ...base, property: "ab", observedValue: "c" }),
+    )
+  })
+
+  it("reads the same key off a finding as off its parts", () => {
+    expect(
+      causeKeyOf({
+        projectId: base.projectId,
+        evidence: {
+          property: base.property,
+          observedValue: base.observedValue,
+          expectedValue: base.expectedValue,
+        },
+      }),
+    ).toBe(causeKey(base))
+  })
+})
+

@@ -40,6 +40,12 @@ export interface ComposeInput {
   before: EvidenceImage | null
   after: EvidenceImage | null
   opener: Opener
+  /**
+   * Other routes rendering the same value, missing the same token. Empty when
+   * this screen is the only one. A reviewer reading a one-line change is owed
+   * the difference between fixing one screen and fixing twelve.
+   */
+  alsoOn?: readonly string[]
 }
 
 /** One line, sentence case, naming both values and the route. */
@@ -55,7 +61,7 @@ export function pullRequestBody(input: ComposeInput): string {
   const sections: string[] = [
     evidenceSentence(finding),
     "",
-    `Seen on ${input.route} at ${input.viewport}. ${openedLine(input.opener)}`,
+    `${seenLine(input)} ${openedLine(input.opener)}`,
     "",
     "## The change",
     "",
@@ -111,6 +117,20 @@ function boundaryLine(plan: PatchPlan): string {
     "have chosen to fix it. Drift does not build your project and cannot know " +
     "any of those. That is why this is a draft."
   )
+}
+
+/**
+ * Where the value was seen. One screen, or all of them, because the same value
+ * missing the same token on twelve screens is one mistake and this is the line
+ * that says so.
+ */
+function seenLine(input: ComposeInput): string {
+  const also = input.alsoOn ?? []
+  if (also.length === 0) return `Seen on ${input.route} at ${input.viewport}.`
+
+  const screens = also.length + 1
+  const routes = [input.route, ...also].join(", ")
+  return `Seen on ${screens} screens at ${input.viewport}: ${routes}. This change fixes all of them.`
 }
 
 function openedLine(opener: Opener): string {
