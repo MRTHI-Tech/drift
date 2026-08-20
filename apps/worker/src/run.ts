@@ -119,7 +119,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
     }
     logger.log("render.planned", { targets: targets.length, routes: config.routes.length })
 
-    const { screenIds, findingIds, tokenFindings, distances, captured, failures } = await renderAll(
+    const { screenIds, findingIds, tokenFindings, distances, captured, knownFindings, failures } = await renderAll(
       {
         targets,
         settings,
@@ -171,6 +171,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
         routesChecked: outcome.routesChecked,
         status: outcome.status,
         findingIds,
+        knownFindings,
         error: outcome.error,
       })
       await touchProject(repositories, project.id, startedAt, logger)
@@ -181,6 +182,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       routesChecked: outcome.routesChecked,
       screensWritten: screenIds.length,
       findingsRaised: findingIds.length,
+      knownFindings,
       pullRequestsOpened: actuation?.opened.length ?? 0,
       findingsWaiting: actuation?.waiting.length ?? 0,
       failed: failures.length,
@@ -231,6 +233,8 @@ interface TargetResult {
    * both and judging happens seconds later.
    */
   captured: CapturedScreen
+  /** Candidates an existing finding already covered, so nothing was written. */
+  alreadyKnown: number
 }
 
 async function renderAll(input: RenderAllInput): Promise<{
@@ -239,6 +243,7 @@ async function renderAll(input: RenderAllInput): Promise<{
   tokenFindings: Finding[]
   distances: Map<string, number>
   captured: CapturedScreen[]
+  knownFindings: number
   failures: TargetFailure[]
 }> {
   const browser = await launchBrowser()
@@ -249,6 +254,7 @@ async function renderAll(input: RenderAllInput): Promise<{
   const tokenFindings: Finding[] = []
   const distances = new Map<string, number>()
   const captured: CapturedScreen[] = []
+  let knownFindings = 0
   try {
     const failures = await captureAll(
       input.targets,
@@ -260,10 +266,11 @@ async function renderAll(input: RenderAllInput): Promise<{
         tokenFindings.push(...result.findings)
         for (const [findingId, distance] of result.distances) distances.set(findingId, distance)
         captured.push(result.captured)
+        knownFindings += result.alreadyKnown
       },
       input.logger,
     )
-    return { screenIds, findingIds, tokenFindings, distances, captured, failures }
+    return { screenIds, findingIds, tokenFindings, distances, captured, knownFindings, failures }
   } finally {
     await browser.close()
     input.logger.log("render.browser_closed")
@@ -394,6 +401,7 @@ async function renderOne(
     findings: created,
     distances: nearestTokenDistances(input.project.id, target.route, candidates, created),
     captured: { screen, screenshot: capture.screenshot },
+    alreadyKnown,
   }
 }
 
@@ -483,6 +491,8 @@ function startingRun(
     routesChecked: 0,
     status: "error",
     findingIds: [],
+    // Nobody has counted yet. Filled in when the run finishes.
+    knownFindings: null,
     error: "The run did not finish.",
   }
 }
@@ -490,7 +500,10 @@ function startingRun(
 /**
  * A run is an error when any target did not render, findings when it raised
  * one, and clean otherwise. A run whose candidates were all covered by
- * findings that already exist is clean: it found nothing new to say. Partial
+ * findings that already exist is clean: it found nothing new to say. What it
+ * did find is counted on the run document as `knownFindings` rather than
+ * folded into the status, because a run that suppressed twenty sightings and
+ * a run that saw nothing are both clean and are not the same thing. Partial
  * results stay persisted whatever the status.
  *
  * A route counts as checked only when every viewport of it rendered: half a

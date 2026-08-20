@@ -8,6 +8,7 @@
 import type {
   Confidence,
   FindingStatus,
+  Run,
   RunStatus,
   RunTrigger,
 } from "@drift/core"
@@ -101,6 +102,29 @@ export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
   clean: "nothing to report",
   findings: "findings raised",
   error: "did not finish",
+}
+
+/** The same three, as a person picks them off a filter. */
+export const RUN_STATUS_FILTER_LABEL: Record<RunStatus, string> = {
+  findings: "Raised something",
+  clean: "Nothing new",
+  error: "Did not finish",
+}
+
+/**
+ * How a run ended, said so that a clean run does not overstate itself.
+ *
+ * A run is clean when it raised nothing new, which is not the same as having
+ * found nothing: a value already raised on a route is never raised again. A
+ * run that suppressed twelve sightings and a run that saw none are both clean,
+ * and only one of them has nothing to report.
+ *
+ * Runs written before the count existed carry null and keep the old words,
+ * because inventing a number for them would be worse than saying less.
+ */
+export function runOutcome(run: Run): string {
+  if (run.status !== "clean") return RUN_STATUS_LABEL[run.status]
+  return run.knownFindings ? "nothing new" : RUN_STATUS_LABEL.clean
 }
 
 /** What was decided about a finding, in words. */

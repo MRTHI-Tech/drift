@@ -182,6 +182,19 @@ export interface Run {
   routesChecked: number
   status: RunStatus
   findingIds: string[]
+  /**
+   * Candidates this run found that an existing finding already covered.
+   *
+   * A run is `clean` when it raised nothing new, which is not the same as
+   * having found nothing: a value already raised on a route is never raised
+   * again, whatever was decided about it. Without this count a project can
+   * drift once and then report `clean` forever, and the feed has no way to
+   * say that what it is quiet about is still there.
+   *
+   * Null on a run written before the field existed, which is not zero. Zero
+   * means the run found nothing. Null means nobody counted.
+   */
+  knownFindings: number | null
   error: string | null
 }
 

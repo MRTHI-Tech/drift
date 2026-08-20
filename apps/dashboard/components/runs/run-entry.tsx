@@ -29,7 +29,7 @@ import { Timestamp } from "@/components/timestamp"
 import {
   count,
   duration,
-  RUN_STATUS_LABEL,
+  runOutcome,
   screenLabel,
   TRIGGER_LABEL,
 } from "@/lib/format"
@@ -67,7 +67,7 @@ export function RunEntry({
             </span>
             <Badge variant="outline">{TRIGGER_LABEL[run.trigger]}</Badge>
             <Badge variant={run.status === "error" ? "destructive" : "outline"}>
-              {RUN_STATUS_LABEL[run.status]}
+              {runOutcome(run)}
             </Badge>
           </span>
 
@@ -75,6 +75,9 @@ export function RunEntry({
             {count(run.routesChecked, "route")} checked,{" "}
             {count(view.screensCaptured, "screen")} captured,{" "}
             {count(view.findings.length, "finding")} raised
+            {run.knownFindings
+              ? `, ${count(run.knownFindings, "value")} already raised`
+              : ""}
             {took ? `, in ${took}` : ""}.
           </span>
         </span>
@@ -136,6 +139,9 @@ export function RunEntry({
             <p className="px-6 text-xs leading-relaxed text-muted-foreground">
               This run raised nothing new. A value already raised on a route is
               not raised again, whatever was decided about it.
+              {run.knownFindings
+                ? ` It did read ${count(run.knownFindings, "value")} that a finding already covers, so what those findings describe is still on the screens.`
+                : ""}
             </p>
           ) : (
             <ul className="border-t border-border">

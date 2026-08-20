@@ -37,6 +37,7 @@ function runAt(id: string, startedAt: string, finishedAt: string | null): Run {
     routesChecked: 2,
     status: "findings",
     findingIds: [],
+    knownFindings: 0,
     error: null,
   }
 }

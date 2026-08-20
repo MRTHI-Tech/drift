@@ -183,12 +183,15 @@ describe("runProject", () => {
     ).rejects.toThrow(/GITHUB_TOKEN/)
 
     // Created up front as an error, so a killed process leaves an honest run.
+    // `knownFindings` starts null rather than zero: nobody has counted yet, and
+    // zero would claim the run looked and found nothing already known.
     expect(created[0]).toMatchObject({
       projectId: "proj1",
       trigger: "manual",
       status: "error",
       routesChecked: 0,
       findingIds: [],
+      knownFindings: null,
     })
     expect(created[0]?.finishedAt).toBeNull()
 
