@@ -54,11 +54,16 @@ export function fixerFor(logger: AgentLogger): FixProposer {
         expectedValue: evidence.expectedValue,
         expectedSource: evidence.expectedSource ?? "",
         sentence: evidenceSentence(finding),
+        observedText: request.observedText,
         blocked: request.blocked,
         kind: patchKindOf(finding),
         group: valueGroupOf(evidence.property),
         files: [...request.files],
         arrival: arrivalFor(evidence.property, evidence.expectedValue),
+        // A token finding names the token it missed, and a fix that references
+        // that token by name has done the better thing than pasting its value.
+        alsoAccept:
+          finding.type === "token" && evidence.expectedSource ? [evidence.expectedSource] : [],
       },
       logger,
     )

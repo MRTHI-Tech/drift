@@ -25,7 +25,7 @@ import { actuationError, silentActuationLogger, type ActuationLogger } from "./l
 import { openFixPullRequest, type PullRequestResult } from "./open-pr"
 import { planFindingPatch, type PatchDirection, type PatchPlan } from "./patch"
 import { syncRulesFile, type RulesSyncResult } from "./rules-sync"
-import type { FixProposer } from "./run-actuation"
+import { observedTextOf, type FixProposer } from "./run-actuation"
 
 /** What a person can say about a finding. */
 export type ResolutionAction = "conform" | "update_siblings" | "exception" | "dismiss"
@@ -439,6 +439,7 @@ async function plannedFix(
       files,
       blocked: mechanical.blocked,
       route: screen?.route ?? "",
+      observedText: observedTextOf(screen, input.finding.evidence.selector),
     })
 
     input.logger.log("resolve.fixer", {

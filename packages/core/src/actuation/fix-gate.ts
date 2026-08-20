@@ -28,7 +28,10 @@
  *      refactor the model decided to do on the way past.
  *   6. The edits actually arrive at what the finding asked for. For a value or
  *      a label that means the target appears in what was written, in one of
- *      the spellings source is allowed to write it in. For a derived property
+ *      the spellings source is allowed to write it in, or by the name of the
+ *      token it came from: a fix that writes `palette.paper` where the finding
+ *      asked for `#F0EDE8` has done the better thing, and a gate that refused
+ *      it would be teaching the Fixer to hardcode. For a derived property
  *      it cannot mean that, because the target is a reading rather than a
  *      literal: no source file contains the word `warm`, and a heading that
  *      has been rewritten to sound warm never will. So a derived property is
@@ -96,6 +99,13 @@ export interface FixGateInput {
   from: string
   /** How rule 6 is checked. Literal unless the caller says otherwise. */
   arrival?: FixArrival
+  /**
+   * Text that also counts as arriving, alongside the target value's own
+   * spellings. The name of the token the value came from goes here, so a fix
+   * that references the token satisfies rule 6 rather than being refused for
+   * doing the right thing.
+   */
+  alsoAccept?: readonly string[]
 }
 
 export interface FixGateResult {
@@ -129,12 +139,31 @@ function editLines(edit: ProposedEdit): number {
 }
 
 /**
- * What a person would read in a piece of source, near enough for a classifier.
- * Tags go, their attributes with them, because a `className` is not the voice
- * of the screen and a word inside one should not be counted as though it were.
+ * Every piece of a source fragment that might be the words a person reads.
+ *
+ * There is no single answer, which is why this returns several. A heading
+ * writes its words between its tags, so stripping the tags finds them. A
+ * button in this style writes them in an attribute, so stripping the tags
+ * throws them away instead: `<Button label="Continue" />` has no text between
+ * anything, and the first version of this function reduced it to nothing and
+ * refused every fix that touched one.
+ *
+ * So both readings are offered, along with each string literal on its own, and
+ * a derived arrival is satisfied when any one of them reads as the target. All
+ * of them are text the Fixer actually wrote; none is invented here.
  */
-function visibleText(source: string): string {
-  return source.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+export function candidateTexts(source: string): string[] {
+  const texts = new Set<string>()
+
+  const stripped = source.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+  if (stripped.length > 0) texts.add(stripped)
+
+  for (const match of source.matchAll(/["'`]([^"'`\n]{1,120})["'`]/g)) {
+    const value = match[1]?.trim()
+    if (value && value.length > 0) texts.add(value)
+  }
+
+  return [...texts]
 }
 
 /** Occurrences of a literal, counted without treating any of it as a pattern. */
@@ -232,12 +261,14 @@ export function gateProposedFix(input: FixGateInput): FixGateResult {
   const arrival = input.arrival ?? { kind: "literal" }
   const arrived =
     arrival.kind === "derived"
-      ? applied.some((edit) => arrival.reads(visibleText(edit.replace)))
+      ? applied.some((edit) => candidateTexts(edit.replace).some((text) => arrival.reads(text)))
       : [...touched].some((path) => {
           const before = originals.get(path) ?? ""
           const after = current.get(path) ?? ""
-          const spellings =
-            input.kind === "copy" ? [input.to.trim()] : sourceSpellings(input.to, input.group)
+          const spellings = [
+            ...(input.kind === "copy" ? [input.to.trim()] : sourceSpellings(input.to, input.group)),
+            ...(input.alsoAccept ?? []).map((entry) => entry.trim()).filter((entry) => entry.length > 0),
+          ]
           return spellings.some((spelling) => countOf(after, spelling) > countOf(before, spelling))
         })
   if (!arrived) {

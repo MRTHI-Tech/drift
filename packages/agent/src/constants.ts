@@ -72,7 +72,7 @@ export const MAX_READ_LINES = 200
  * counts a turn as one model response, so this is how many times it may look
  * something up and think again.
  */
-export const MAX_FIX_TURNS = 8
+export const MAX_FIX_TURNS = 20
 
 /** Wait before the one retry every model call gets (AGENTS.md section 4). */
 export const RETRY_BACKOFF_MS = 750

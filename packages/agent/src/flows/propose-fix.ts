@@ -52,6 +52,8 @@ export const ProposeFixInput = z.object({
   observedValue: z.string(),
   expectedValue: z.string(),
   expectedSource: z.string(),
+  /** What the cited element actually says on the screen. May be empty. */
+  observedText: z.string(),
   /** The evidence line the judgment phase already wrote. */
   sentence: z.string(),
   /** Why the mechanical patcher would not do this. Never empty. */
@@ -68,6 +70,8 @@ export const ProposeFixInput = z.object({
    * target is a reading rather than a literal.
    */
   arrival: z.custom<FixArrival>(() => true).optional(),
+  /** Text that also counts as arriving, such as the token's own name. */
+  alsoAccept: z.array(z.string()).optional(),
 })
 
 export const ProposeFixOutput = z.object({
@@ -113,7 +117,7 @@ const EMPTY: ProposeFixOutput = {
  * every call and a tool that closes over one run's repo has no business
  * outliving it.
  */
-function repoToolsFor(files: readonly SourceFile[]) {
+function repoToolsFor(files: readonly SourceFile[], logger: AgentLogger) {
   return [
     ai.dynamicTool(
       {
@@ -127,7 +131,11 @@ function repoToolsFor(files: readonly SourceFile[]) {
           truncated: z.boolean(),
         }),
       },
-      async ({ query }) => searchRepo(files, query),
+      async ({ query }) => {
+        const found = searchRepo(files, query)
+        logger.log("fixer.tool", { tool: "searchRepo", query, hits: found.total })
+        return found
+      },
     ),
     ai.dynamicTool(
       {
@@ -149,7 +157,11 @@ function repoToolsFor(files: readonly SourceFile[]) {
           })
           .nullable(),
       },
-      async ({ path, from, to }) => readRepoFile(files, path, from ?? 1, to),
+      async ({ path, from, to }) => {
+        const slice = readRepoFile(files, path, from ?? 1, to)
+        logger.log("fixer.tool", { tool: "readRepoFile", path, found: slice !== null })
+        return slice
+      },
     ),
     ai.dynamicTool(
       {
@@ -158,7 +170,11 @@ function repoToolsFor(files: readonly SourceFile[]) {
         inputSchema: z.object({ prefix: z.string().optional() }),
         outputSchema: z.object({ paths: z.array(z.string()) }),
       },
-      async ({ prefix }) => ({ paths: listRepoFiles(files, prefix ?? "") }),
+      async ({ prefix }) => {
+        const paths = listRepoFiles(files, prefix ?? "")
+        logger.log("fixer.tool", { tool: "listRepoFiles", prefix: prefix ?? "", paths: paths.length })
+        return { paths }
+      },
     ),
   ]
 }
@@ -185,6 +201,7 @@ export async function proposeFix(
     observedValue: input.observedValue,
     expectedValue: input.expectedValue,
     expectedSource: input.expectedSource,
+    observedText: input.observedText.length > 0 ? input.observedText : "not recorded",
     sentence: input.sentence,
     blocked: input.blocked,
     fileCount: input.files.length,
@@ -195,7 +212,7 @@ export async function proposeFix(
       const response = await ai.generate({
         system: PROPOSE_FIX_SYSTEM,
         prompt: task,
-        tools: repoToolsFor(input.files),
+        tools: repoToolsFor(input.files, logger),
         maxTurns: MAX_FIX_TURNS,
         output: { schema: ModelEdits },
       })
@@ -213,6 +230,7 @@ export async function proposeFix(
     to: input.expectedValue,
     group: (input.group as TokenGroup | null) ?? null,
     arrival: input.arrival,
+    alsoAccept: input.alsoAccept,
   })
 
   const reasons = [...gate.reasons]

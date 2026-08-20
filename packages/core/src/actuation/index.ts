@@ -111,6 +111,7 @@ export {
 
 export {
   actuationCandidates,
+  observedTextOf,
   openAutonomousPullRequests,
   type AutonomousCandidate,
   type AutonomousRunInput,

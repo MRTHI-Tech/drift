@@ -17,7 +17,7 @@ import type { Octokit } from "@octokit/rest"
 
 import { fetchSourceFiles, isRepoAllowed, type SourceFile } from "../github"
 import type { Repositories } from "../repositories"
-import type { Finding, Project } from "../types"
+import type { Finding, Project, Screen } from "../types"
 import { isAutonomousFix } from "./autonomy"
 import { actuationError, silentActuationLogger, type ActuationLogger } from "./logging"
 import { openFixPullRequest } from "./open-pr"
@@ -50,6 +50,18 @@ export interface FixRequest {
   /** Why the mechanical patcher would not do this. Never empty. */
   blocked: string
   route: string
+  /**
+   * What the element the finding cites actually says on the screen, out of
+   * that screen's own extraction record. Empty when the element holds no text
+   * or the screen is gone.
+   *
+   * This exists because a derived property's value is a reading rather than a
+   * literal. A finding saying `cta.voice` should be `generic` gives the Fixer
+   * nothing to search for: run against a real repo, it spent twenty turns
+   * looking for the words "generic" and "specific" in the source, which were
+   * never going to be there. What it needed was the label itself.
+   */
+  observedText: string
 }
 
 export interface FixProposal {
@@ -247,6 +259,7 @@ async function askTheFixer(
       files,
       blocked: mechanical.blocked ?? "",
       route: screen?.route ?? "",
+      observedText: observedTextOf(screen, finding.evidence.selector),
     })
 
     logger.log("actuate.fixer", {
@@ -265,6 +278,25 @@ async function askTheFixer(
     })
     return mechanical
   }
+}
+
+/**
+ * What the cited element says, as the extraction recorded it. Its own text
+ * where it has some, and otherwise the text of everything under it, which is
+ * how a button wrapping a span still reads as the thing it says.
+ */
+export function observedTextOf(screen: Screen | null, selector: string | null): string {
+  if (!screen || !selector) return ""
+
+  const own = screen.text[selector]
+  if (own && own.length > 0) return own
+
+  const prefix = `${selector} > `
+  const parts: string[] = []
+  for (const [key, value] of Object.entries(screen.text)) {
+    if (key.startsWith(prefix) && value.length > 0) parts.push(value)
+  }
+  return parts.join(" ").replace(/\s+/g, " ").trim()
 }
 
 /** The findings of a run that are worth asking the boundary about at all. */

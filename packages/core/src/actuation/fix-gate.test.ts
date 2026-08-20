@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { labelVoice } from "../analysis/copy"
 import { MAX_FIX_FILES, MAX_FIX_LINES } from "./constants"
 import { gateProposedFix, type FixGateInput, type ProposedEdit } from "./fix-gate"
 import { NEAREST_TOKEN, PLANTED_HEX, SOURCE_FILES } from "./fixtures"
@@ -208,9 +209,9 @@ describe("gateProposedFix", () => {
     expect(result.plan).toBeNull()
   })
 
-  it("reads a derived value off the words, not off the markup around them", () => {
+  it("offers the words between the tags and the words inside them alike", () => {
     const files = [{ path: "app/step/page.tsx", text: '<h1 className="terms-list">Hi</h1>\n' }]
-    let seen = ""
+    const seen: string[] = []
     gate(
       [
         {
@@ -228,14 +229,62 @@ describe("gateProposedFix", () => {
         arrival: {
           kind: "derived",
           reads: (text) => {
-            seen = text
-            return true
+            seen.push(text)
+            return false
           },
         },
       },
     )
 
-    expect(seen).toBe("Hey, how are you?")
+    // Both, and deliberately. A heading writes its words between its tags; a
+    // button in a React Native codebase writes them in a `label` attribute,
+    // and an earlier version of this that stripped attributes threw those
+    // away and refused every fix that touched one. An attribute value being
+    // offered is the price of that, and it is only ever offered: the arrival
+    // still has to read it as the value the finding asked for.
+    expect(seen).toContain("Hey, how are you?")
+    expect(seen).toContain("terms-list")
+  })
+
+  it("finds a label a component carries in an attribute", () => {
+    const files = [{ path: "app/step/page.tsx", text: '<Button label="Fill in the circles" />\n' }]
+    const result = gate(
+      [
+        {
+          path: "app/step/page.tsx",
+          find: '<Button label="Fill in the circles" />',
+          replace: '<Button label="Continue" />',
+        },
+      ],
+      {
+        files,
+        kind: "copy",
+        from: "specific",
+        to: "generic",
+        group: null,
+        arrival: { kind: "derived", reads: (text) => labelVoice(text) === "generic" },
+      },
+    )
+
+    expect(result.kept).toBe(1)
+    expect(result.plan?.files[0]?.after).toContain('label="Continue"')
+  })
+
+  it("takes the token's own name as arriving, not only its value", () => {
+    const files = [{ path: "app/step/page.tsx", text: 'const bg = "#FFFFFF"\n' }]
+    const result = gate(
+      [
+        {
+          path: "app/step/page.tsx",
+          find: 'const bg = "#FFFFFF"',
+          replace: "const bg = palette.paper",
+        },
+      ],
+      { files, from: "#FFFFFF", to: "#F0EDE8", alsoAccept: ["palette.paper"] },
+    )
+
+    expect(result.kept).toBe(1)
+    expect(result.plan?.files[0]?.after).toContain("palette.paper")
   })
 
   it("has nothing to keep when the model proposed nothing", () => {
