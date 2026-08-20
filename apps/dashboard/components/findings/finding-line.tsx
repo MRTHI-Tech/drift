@@ -6,6 +6,12 @@
  * the one Drift composes from the value and its token for a token finding. It
  * is never rewritten here (AGENTS.md section 6).
  *
+ * The heading is what the property is called in English, with the kind beside
+ * it, because a row reading `cta.voice` above one reading `background-color`
+ * asks a person to learn two naming schemes before they can read the list.
+ * Both come from one table in `@drift/core` so the list, the filter and the
+ * detail page cannot disagree about what a thing is called.
+ *
  * A row may stand for more than one finding. When the same value misses the
  * same token on several screens it is one problem with one fix, so the row
  * names the screens rather than repeating itself once per screen. The link
@@ -18,6 +24,8 @@ import { RiArrowRightUpLine, RiExternalLinkLine } from "@remixicon/react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Timestamp } from "@/components/timestamp"
+import { FINDING_KIND_LABEL, propertyReading } from "@drift/core/vocabulary"
+
 import { count, FINDING_STATUS_LABEL, screenLabel } from "@/lib/format"
 import type { FindingView } from "@/lib/data/findings"
 
@@ -36,6 +44,7 @@ export function FindingLine({
 }) {
   const { finding, screen, sentence } = view
   const open = finding.status === "open"
+  const reading = propertyReading(finding.evidence.property)
 
   const screens = [view, ...others]
     .map((entry) => entry.screen)
@@ -46,21 +55,15 @@ export function FindingLine({
   return (
     <li className="flex items-start gap-4 border-b border-border px-6 py-4 last:border-b-0">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={finding.type === "pattern" ? "secondary" : "outline"}>
-            {finding.type === "pattern" ? "Pattern" : "Token"}
-          </Badge>
-          {shared ? (
-            <Badge variant="secondary">{count(screens.length, "screen")}</Badge>
-          ) : (
-            <span className="font-mono text-xs">
-              {screen
-                ? screenLabel(screen.route, screen.viewport)
-                : finding.screenId}
-            </span>
-          )}
-          <span className="font-mono text-xs text-muted-foreground">
-            {finding.evidence.property}
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <Badge variant="outline">{FINDING_KIND_LABEL[reading.kind]}</Badge>
+          <span className="text-sm font-medium">{reading.label}</span>
+          <span className="text-xs text-muted-foreground">
+            {shared
+              ? `on ${count(screens.length, "screen")}`
+              : screen
+                ? `on ${screenLabel(screen.route, screen.viewport)}`
+                : `on ${finding.screenId}`}
           </span>
           {open ? null : (
             <Badge variant="outline">

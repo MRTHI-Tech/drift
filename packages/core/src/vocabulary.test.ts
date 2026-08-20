@@ -1,0 +1,57 @@
+import { describe, expect, it } from "vitest"
+
+import { STYLE_PROPERTIES } from "./constants"
+import {
+  FINDING_KINDS,
+  FINDING_KIND_LABEL,
+  isNamedProperty,
+  propertyReading,
+} from "./vocabulary"
+
+describe("propertyReading", () => {
+  it("names every style property Drift records", () => {
+    // The guard that matters. A property added to the extraction without a
+    // name here would show a person a CSS keyword in a list meant to be read.
+    const unnamed = STYLE_PROPERTIES.filter((property) => !isNamedProperty(property))
+
+    expect(unnamed).toEqual([])
+  })
+
+  it("turns both vocabularies into one", () => {
+    expect(propertyReading("background-color")).toEqual({
+      kind: "colour",
+      label: "Background colour",
+    })
+    expect(propertyReading("cta.voice")).toEqual({ kind: "wording", label: "Button voice" })
+  })
+
+  it("puts a radius and a button's radius in the same kind", () => {
+    // Unrelated names, one decision. This is why it is a table and not a rule.
+    expect(propertyReading("border-radius").kind).toBe(propertyReading("cta.radius").kind)
+  })
+
+  it("gives every kind a label", () => {
+    for (const kind of FINDING_KINDS) {
+      expect(FINDING_KIND_LABEL[kind]).toBeTruthy()
+    }
+  })
+
+  it("only ever answers with a kind the filter offers", () => {
+    const kinds = new Set<string>(FINDING_KINDS)
+    for (const property of STYLE_PROPERTIES) {
+      expect(kinds.has(propertyReading(property).kind)).toBe(true)
+    }
+  })
+
+  it("reads an unknown property as itself rather than as nothing", () => {
+    expect(propertyReading("stroke-dasharray").label).toBe("stroke-dasharray")
+  })
+
+  it("writes every name in sentence case, with no dots or hyphens", () => {
+    for (const property of STYLE_PROPERTIES) {
+      const { label } = propertyReading(property)
+      expect(label).not.toMatch(/[.\-]/)
+      expect(label[0]).toBe(label[0]?.toUpperCase())
+    }
+  })
+})

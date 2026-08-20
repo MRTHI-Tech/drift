@@ -12,6 +12,7 @@
  */
 
 import type { Finding } from "../types"
+import { propertyReading } from "../vocabulary"
 
 /** The finding's own line, or Drift's own when it has none. */
 export function evidenceSentence(finding: Finding): string {
@@ -25,11 +26,17 @@ export function evidenceSentence(finding: Finding): string {
  * A token finding as one line: what the screen renders, and the token it sits
  * nearest to. Never says the value is wrong, only what it is and what the scale
  * declares.
+ *
+ * The property is named in English rather than in CSS. The line used to read
+ * "renders rgb(242, 242, 242) for background-color", which puts a stylesheet
+ * keyword in the one sentence that exists to be plain, and does it twice over
+ * when the row above it already says which property this is.
  */
 export function tokenSentence(finding: Finding): string {
   const { property, observedValue, expectedValue, expectedSource } = finding.evidence
+  const reads = propertyReading(property).label.toLowerCase()
 
-  const observed = `This screen renders ${observedValue} for ${property}.`
+  const observed = `This screen's ${reads} is ${observedValue}.`
   if (!expectedSource || expectedValue.length === 0) {
     return `${observed} It is on no scale the token file declares.`
   }

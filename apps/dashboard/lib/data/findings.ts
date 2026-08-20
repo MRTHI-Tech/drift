@@ -10,6 +10,9 @@
 
 import {
   causeKeyOf,
+  FINDING_KINDS,
+  propertyReading,
+  type FindingKind,
   evidenceSentence,
   latestPerRoute,
   pullRequestUrl,
@@ -61,6 +64,30 @@ export interface FindingGroup {
   lead: FindingView
   /** Every other open sighting of the same cause. */
   others: FindingView[]
+}
+
+/** How many waiting problems each kind has, for the filter. */
+export function countByKind(groups: readonly FindingGroup[]): Record<FindingKind, number> {
+  const counts = Object.fromEntries(
+    FINDING_KINDS.map((kind) => [kind, 0])
+  ) as Record<FindingKind, number>
+
+  for (const group of groups) {
+    counts[propertyReading(group.lead.finding.evidence.property).kind] += 1
+  }
+
+  return counts
+}
+
+/** The groups of one kind, or all of them when nothing is selected. */
+export function ofKind(
+  groups: readonly FindingGroup[],
+  kind: FindingKind | null
+): FindingGroup[] {
+  if (!kind) return [...groups]
+  return groups.filter(
+    (group) => propertyReading(group.lead.finding.evidence.property).kind === kind
+  )
 }
 
 export interface FindingsPage {

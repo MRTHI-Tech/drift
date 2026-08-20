@@ -28,8 +28,10 @@ describe("evidenceSentence", () => {
   })
 
   it("writes its own for a token finding, which has none", () => {
+    // English, not CSS: the property reads as "background colour" rather than
+    // as the stylesheet keyword it was measured from.
     expect(evidenceSentence(TOKEN_FINDING)).toBe(
-      `This screen renders rgb(255, 0, 0) for background-color. ` +
+      `This screen's background colour is rgb(255, 0, 0). ` +
         `The nearest token is ${NEAREST_TOKEN.name} at ${NEAREST_TOKEN.value}.`,
     )
   })

@@ -9,10 +9,13 @@
 
 import type { Metadata } from "next"
 
+import { FINDING_KINDS } from "@drift/core/vocabulary"
+
 import { FindingLine } from "@/components/findings/finding-line"
+import { KindFilter } from "@/components/findings/kind-filter"
 import { PageHeader } from "@/components/page-header"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { loadFindings } from "@/lib/data/findings"
+import { countByKind, loadFindings, ofKind } from "@/lib/data/findings"
 import { loadWorkspace } from "@/lib/data/workspace"
 import { count } from "@/lib/format"
 
@@ -20,7 +23,11 @@ export const metadata: Metadata = { title: "Findings" }
 
 export const dynamic = "force-dynamic"
 
-export default async function FindingsPage() {
+export default async function FindingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ kind?: string }>
+}) {
   const workspace = await loadWorkspace()
   if (!workspace) return null
 
@@ -28,6 +35,13 @@ export default async function FindingsPage() {
     workspace.current,
     workspace.repositories
   )
+
+  // Read off the URL rather than held in state, so a filtered list is a page
+  // somebody can bookmark and go back out of.
+  const asked = (await searchParams).kind
+  const selected = FINDING_KINDS.find((kind) => kind === asked) ?? null
+  const counts = countByKind(open)
+  const shown = ofKind(open, selected)
 
   return (
     <div className="flex flex-col">
@@ -61,15 +75,28 @@ export default async function FindingsPage() {
                   same token on several screens is one thing to decide.
                 </p>
               ) : null}
-              <ul>
-                {open.map((group) => (
-                  <FindingLine
-                    key={group.lead.finding.id}
-                    view={group.lead}
-                    others={group.others}
-                  />
-                ))}
-              </ul>
+
+              <KindFilter
+                counts={counts}
+                selected={selected}
+                total={open.length}
+              />
+
+              {shown.length === 0 ? (
+                <p className="px-6 py-6 text-xs leading-relaxed text-muted-foreground">
+                  Nothing of that kind is waiting.
+                </p>
+              ) : (
+                <ul>
+                  {shown.map((group) => (
+                    <FindingLine
+                      key={group.lead.finding.id}
+                      view={group.lead}
+                      others={group.others}
+                    />
+                  ))}
+                </ul>
+              )}
             </>
           )}
         </TabsContent>
