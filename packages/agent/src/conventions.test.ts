@@ -1,7 +1,8 @@
 import { MIN_SCREENS_PER_CONVENTION } from "@drift/core"
 import { describe, expect, it } from "vitest"
 
-import { confidenceOf, deriveConventionProposals } from "./conventions"
+import { deriveConventionProposals } from "./conventions"
+import { confidenceOf } from "@drift/core"
 import {
   CONVENTION_HEADING_SIZE,
   CONVENTION_LABEL,

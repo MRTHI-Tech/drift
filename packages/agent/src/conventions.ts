@@ -12,7 +12,7 @@
  * there is nothing to state.
  */
 
-import { MIN_SCREENS_PER_CONVENTION, type Confidence } from "@drift/core"
+import { confidenceOf, MIN_SCREENS_PER_CONVENTION, type Confidence } from "@drift/core"
 
 import { PROFILE_PROPERTIES, profileValue, type ProfiledScreen } from "./profile"
 
@@ -89,17 +89,6 @@ function plurality(
   }
 
   return tied ? null : best
-}
-
-/**
- * How much of the family agrees. A value five of six screens render is a
- * standard; a value three of eight render is a habit worth stating quietly.
- */
-export function confidenceOf(agreeing: number, considered: number): Confidence {
-  const ratio = considered === 0 ? 0 : agreeing / considered
-  if (agreeing >= 4 && ratio >= 0.8) return "high"
-  if (ratio >= 0.6) return "medium"
-  return "low"
 }
 
 /**

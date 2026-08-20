@@ -60,7 +60,6 @@ export {
 } from "./cluster"
 
 export {
-  confidenceOf,
   deriveConventionProposals,
   fallbackLabel,
   type ConventionProposal,
