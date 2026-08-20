@@ -188,23 +188,63 @@ export async function loadFindingDetail(
     ? await repositories.archetypes.get(divergent.archetypeId)
     : null
 
-  const siblings = archetype
-    ? latestPerRoute(
-        await repositories.screens.listByArchetype(project.id, archetype.id)
-      ).filter((screen) => screen.id !== finding.screenId)
-    : []
-
   return {
     ...view,
     project,
     divergent,
-    siblings: ordered(siblings, finding.evidence.siblingScreenIds),
+    siblings: await comparisonScreens(finding, divergent, archetype, project, repositories),
     archetype,
     resolutions: await repositories.resolutions.listByFinding(
       project.id,
       findingId
     ),
   }
+}
+
+/**
+ * The screens a pattern finding was actually compared against.
+ *
+ * The finding names them, and what it names is not the same as the archetype
+ * it belongs to. Against a real project it was not: an onboarding family of
+ * five screens supported a convention that three of them rendered, and the
+ * page showed all five under the convention's value. That said the other two
+ * rendered it as well, and they did not. One of them said "Build our rhythm"
+ * and the other said "Fill in the circles", both sitting under a heading
+ * reading "generic", which is the opposite of what they are.
+ *
+ * Worse, one of the five was the screen being judged. The filter compared
+ * capture ids while the list held the newest capture of each route, and the
+ * finding cited an older one, so a screen appeared as evidence against itself.
+ *
+ * So: the screens the convention counted, in the order the evidence names
+ * them, and never the route the finding is about. A finding citing nothing,
+ * which is what a convention with no evidence would leave, falls back to the
+ * family with its own route removed, and is still never compared to itself.
+ */
+async function comparisonScreens(
+  finding: Finding,
+  divergent: Screen | null,
+  archetype: Archetype | null,
+  project: Project,
+  repositories: Repositories
+): Promise<Screen[]> {
+  const cited = finding.evidence.siblingScreenIds
+  if (cited.length > 0) {
+    const screens: Screen[] = []
+    for (const id of cited) {
+      const screen = await repositories.screens.get(id)
+      if (screen && screen.route !== divergent?.route) screens.push(screen)
+    }
+    return screens
+  }
+
+  if (!archetype) return []
+
+  const family = latestPerRoute(
+    await repositories.screens.listByArchetype(project.id, archetype.id)
+  ).filter((screen) => screen.route !== divergent?.route)
+
+  return ordered(family, cited)
 }
 
 /** Screens the evidence cites first, then the rest of the family. */
