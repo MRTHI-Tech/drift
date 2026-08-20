@@ -9,6 +9,7 @@
  */
 
 import {
+  causeKeyOf,
   evidenceSentence,
   latestPerRoute,
   pullRequestUrl,
@@ -45,8 +46,28 @@ export interface FindingDetail extends FindingView {
   resolutions: Resolution[]
 }
 
+/**
+ * One problem, and every screen showing it.
+ *
+ * A finding is per screen and stays that way: the drift really is on each one.
+ * But twelve screens rendering the same wrong grey, from one default in one
+ * file, is one thing to decide about, and a list that asks somebody to decide
+ * it twelve times is a list they will stop reading. So the page groups what
+ * actuation already groups, by the same cause key, and shows the problem once
+ * with the screens it was seen on underneath.
+ */
+export interface FindingGroup {
+  /** The sighting a person acts on. The oldest, as actuation picks it. */
+  lead: FindingView
+  /** Every other open sighting of the same cause. */
+  others: FindingView[]
+}
+
 export interface FindingsPage {
-  open: FindingView[]
+  /** Waiting, grouped by cause. */
+  open: FindingGroup[]
+  /** How many findings those groups stand for. */
+  openCount: number
   settled: FindingView[]
 }
 
@@ -63,11 +84,49 @@ export async function loadFindings(
     PAGE_SIZE
   )
   const views = await decorate(findings, project, repositories)
+  const open = views.filter((view) => view.finding.status === "open")
 
   return {
-    open: views.filter((view) => view.finding.status === "open"),
+    open: groupByCause(open),
+    openCount: open.length,
     settled: views.filter((view) => view.finding.status !== "open"),
   }
+}
+
+/**
+ * Open findings as the problems behind them, biggest first.
+ *
+ * The lead is the oldest sighting, which is the one actuation fixes and the
+ * one whose pull request the others will carry, so the row a person opens is
+ * the row the work happened on. Groups are ordered by how many screens they
+ * affect, because a value wrong on twelve screens is a bigger thing to know
+ * about than one wrong on a single screen, whatever order they were raised in.
+ */
+export function groupByCause(views: readonly FindingView[]): FindingGroup[] {
+  const causes = new Map<string, FindingView[]>()
+  for (const view of views) {
+    const key = causeKeyOf(view.finding)
+    const group = causes.get(key)
+    if (group) group.push(view)
+    else causes.set(key, [view])
+  }
+
+  const groups: FindingGroup[] = []
+  for (const group of causes.values()) {
+    const ordered = [...group].sort(
+      (left, right) =>
+        left.finding.createdAt.getTime() - right.finding.createdAt.getTime() ||
+        (left.finding.id < right.finding.id ? -1 : 1)
+    )
+    const [lead, ...others] = ordered
+    if (lead) groups.push({ lead, others })
+  }
+
+  return groups.sort(
+    (left, right) =>
+      right.others.length - left.others.length ||
+      right.lead.finding.createdAt.getTime() - left.lead.finding.createdAt.getTime()
+  )
 }
 
 /**

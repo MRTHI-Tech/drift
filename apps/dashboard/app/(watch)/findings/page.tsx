@@ -24,7 +24,7 @@ export default async function FindingsPage() {
   const workspace = await loadWorkspace()
   if (!workspace) return null
 
-  const { open, settled } = await loadFindings(
+  const { open, openCount, settled } = await loadFindings(
     workspace.current,
     workspace.repositories
   )
@@ -53,11 +53,24 @@ export default async function FindingsPage() {
               {workspace.current.name} has been answered.
             </p>
           ) : (
-            <ul>
-              {open.map((view) => (
-                <FindingLine key={view.finding.id} view={view} />
-              ))}
-            </ul>
+            <>
+              {openCount > open.length ? (
+                <p className="border-b border-border px-6 py-3 text-xs text-muted-foreground">
+                  {count(openCount, "finding")} on{" "}
+                  {count(open.length, "problem")}. The same value missing the
+                  same token on several screens is one thing to decide.
+                </p>
+              ) : null}
+              <ul>
+                {open.map((group) => (
+                  <FindingLine
+                    key={group.lead.finding.id}
+                    view={group.lead}
+                    others={group.others}
+                  />
+                ))}
+              </ul>
+            </>
           )}
         </TabsContent>
 
