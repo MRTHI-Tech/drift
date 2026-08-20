@@ -104,9 +104,10 @@ describe("pullRequestBody", () => {
   })
 
   it("states the boundary of what Drift will change", () => {
-    expect(pullRequestBody(compose())).toContain(
-      "Anything needing a judgment about code structure is left for you.",
-    )
+    // The default plan is mechanical, and what bounds a mechanical patch is
+    // that it never read the code. The Fixer's version of this sentence, and
+    // why the two must differ, is below.
+    expect(pullRequestBody(compose())).toContain("did not read the code around it")
   })
 
   it("breaks none of the copy rules in AGENTS.md section 6", () => {
@@ -121,3 +122,44 @@ describe("pullRequestBody", () => {
     }
   })
 })
+
+describe("pullRequestBody, on how far to trust the change", () => {
+  const bodyFor = (author: "mechanical" | "model") =>
+    pullRequestBody(
+      compose({ plan: { ...planFindingPatch(TOKEN_FINDING, "conform", SOURCE_FILES), author } }),
+    )
+
+  it("says a mechanical patch never read the code", () => {
+    const body = bodyFor("mechanical")
+
+    expect(body).toContain("character for character")
+    expect(body).toContain("did not read the code around it")
+  })
+
+  it("says plainly that the Fixer read the code, and calls it a proposal", () => {
+    const body = bodyFor("model")
+
+    expect(body).toContain("by reading your code")
+    expect(body).toContain("proposal")
+  })
+
+  it("never tells a reviewer of a Fixer patch that Drift does not read code", () => {
+    // The whole point. This sentence was true of every pull request until the
+    // Fixer existed, and went on being printed under patches it was false of.
+    expect(bodyFor("model")).not.toContain("did not read the code around it")
+  })
+
+  it("names what the gate checked and what it could not", () => {
+    const body = bodyFor("model")
+
+    expect(body).toContain("applies to a file it actually read")
+    expect(body).toContain("did **not** check that the result compiles")
+    expect(body).toContain("draft")
+  })
+
+  it("still ends every body the same way, whoever wrote the patch", () => {
+    expect(bodyFor("mechanical").trimEnd().endsWith(OPENED_BY_DRIFT)).toBe(true)
+    expect(bodyFor("model").trimEnd().endsWith(OPENED_BY_DRIFT)).toBe(true)
+  })
+})
+

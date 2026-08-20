@@ -525,6 +525,29 @@ export const IGNORED_DIRECTORIES: readonly string[] = [
 ]
 
 /** Most source files read for one patch. A repo past this is not hand-authored. */
+/**
+ * How many times a freshly created ref is read back before giving up, and how
+ * long between tries. The delay grows with each attempt, so the total wait is
+ * a little over three seconds. Measured against the failure that prompted it:
+ * one immediate read missed, and the ref was present by the time anybody
+ * looked again.
+ */
+export const REF_VISIBILITY_ATTEMPTS = 5
+export const REF_VISIBILITY_DELAY_MS = 250
+
+/** Injectable so tests do not wait. */
+let sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+
+/** Replaces the wait between ref reads. Returns the previous one. */
+export function setRefVisibilitySleep(next: (ms: number) => Promise<void>): (ms: number) => Promise<void> {
+  const held = sleep
+  sleep = next
+  return held
+}
+
 export const MAX_SOURCE_FILES = 400
 
 /** Largest file read. A generated bundle is not where a label lives. */
@@ -688,16 +711,32 @@ export async function ensureBranch(
     throw new GitHubError(`${repo} has no branch ${fromRef} to start ${branch} from.`)
   }
 
+  let created: string
   try {
     const response = await octokit.rest.git.createRef({
       ...target,
       ref: `refs/heads/${branch}`,
       sha: base,
     })
-    return { sha: response.data.object.sha, created: true }
+    created = response.data.object.sha
   } catch (cause) {
     throw new GitHubError(`Could not create ${repo}#${branch}. ${describe(cause)}`, { cause })
   }
+
+  // A ref GitHub has just accepted is not always a ref GitHub will hand back.
+  // Creating a fix branch and committing to it a moment later failed against a
+  // real repository with "has no branch to commit to", and the branch was
+  // there afterwards: the write had landed and the read had not caught up. So
+  // the ref is read back until it appears, and nothing downstream has to know
+  // that this can happen.
+  for (let attempt = 1; attempt <= REF_VISIBILITY_ATTEMPTS; attempt += 1) {
+    if (await branchSha(octokit, { repo, branch })) return { sha: created, created: true }
+    await sleep(REF_VISIBILITY_DELAY_MS * attempt)
+  }
+
+  throw new GitHubError(
+    `${repo}#${branch} was created and is still not readable. GitHub accepted the ref and has not caught up.`,
+  )
 }
 
 export interface CommitFilesInput extends BranchInput {
