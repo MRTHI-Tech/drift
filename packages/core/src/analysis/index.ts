@@ -5,6 +5,7 @@
  */
 
 export * from "./color"
+export * from "./components"
 export * from "./copy"
 export * from "./findings"
 export * from "./hash"

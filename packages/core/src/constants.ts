@@ -53,6 +53,8 @@ export const STYLE_PROPERTIES = [
   "display",
   "gap",
   "max-width",
+  "border-width",
+  "border-style",
 ] as const
 
 export type StyleProperty = (typeof STYLE_PROPERTIES)[number]

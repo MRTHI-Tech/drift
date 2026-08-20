@@ -48,6 +48,8 @@ function styles(overrides: Partial<StyleValues> = {}): StyleValues {
     display: "block",
     gap: "normal",
     "max-width": "none",
+    "border-width": "0px",
+    "border-style": "none",
     ...overrides,
   }
 }

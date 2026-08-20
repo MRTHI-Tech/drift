@@ -21,8 +21,11 @@ function raw(overrides: Partial<RawElement> = {}): RawElement {
       display: "inline-flex",
       gap: "8px",
       "max-width": "none",
+      "border-width": "0px",
+      "border-style": "none",
     },
     text: "Continue",
+    attributes: {},
     ...overrides,
   }
 }

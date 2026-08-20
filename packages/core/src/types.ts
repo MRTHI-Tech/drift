@@ -36,12 +36,30 @@ export interface BoundingBox {
 /** The resolved CSS properties recorded for one element. */
 export type StyleValues = Record<StyleProperty, string>
 
+/**
+ * The handful of attributes recorded beside an element's styles.
+ *
+ * Deliberately two. A tag says an element is an `input`, and every text box,
+ * radio, checkbox and date picker in the world is an `input`, so without the
+ * type Drift cannot tell which kind of thing it is looking at. `role` is the
+ * same question asked of anything built out of divs, which is most component
+ * libraries. Absent when the element carries neither.
+ */
+export interface ElementAttributes {
+  /** The `type` attribute, for an input. */
+  type?: string
+  /** The ARIA `role`, for a component built without the tag that means it. */
+  role?: string
+}
+
 /** One visible element as the extractor recorded it. */
 export interface ElementStyles {
   /** Lowercase tag name, for example `button`. */
   tag: string
   box: BoundingBox
   styles: StyleValues
+  /** Omitted when the element carries neither of them. */
+  attributes?: ElementAttributes
 }
 
 /**

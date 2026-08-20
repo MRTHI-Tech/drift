@@ -108,6 +108,8 @@ describe("diffScreenTokens", () => {
       "display",
       "gap",
       "max-width",
+      "border-width",
+      "border-style",
     ])
   })
 })

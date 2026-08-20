@@ -9,6 +9,7 @@ import {
   STYLE_PROPERTIES,
   type BoundingBox,
   type ComputedStyles,
+  type ElementAttributes,
   type ScreenText,
   type StyleProperty,
   type StyleValues,
@@ -34,6 +35,8 @@ export interface RawElement {
   box: BoundingBox
   styles: Record<string, string>
   text: string
+  /** `type` and `role`, each present only when the element carries it. */
+  attributes: Record<string, string>
 }
 
 export interface WalkerOptions {
@@ -187,7 +190,23 @@ export function collectElements({ properties, maxElements }: WalkerOptions): Raw
       styles[property] = style.getPropertyValue(property).trim()
     }
 
-    collected.push({ tag, selector: selectorFor(element), box, styles, text: ownText(element) })
+    // What the element is, as distinct from how it looks. Two attributes, and
+    // only when set, so a document does not grow for the elements that carry
+    // neither, which is nearly all of them.
+    const attributes: Record<string, string> = {}
+    const type = element.getAttribute("type")
+    if (type) attributes.type = type.toLowerCase()
+    const role = element.getAttribute("role")
+    if (role) attributes.role = role.toLowerCase()
+
+    collected.push({
+      tag,
+      selector: selectorFor(element),
+      box,
+      styles,
+      text: ownText(element),
+      attributes,
+    })
   }
 
   return collected
@@ -206,10 +225,12 @@ export function buildExtraction(raw: RawElement[], maxElements = MAX_ELEMENTS): 
     if (element.selector.length === 0) continue
     if (element.selector in computedStyles) continue
 
+    const attributes = pickAttributes(element.attributes)
     computedStyles[element.selector] = {
       tag: element.tag,
       box: roundBox(element.box),
       styles: pickStyles(element.styles),
+      ...(attributes ? { attributes } : {}),
     }
 
     const collapsed = element.text.replace(/\s+/g, " ").trim()
@@ -271,6 +292,19 @@ function pickStyles(styles: Record<string, string>): StyleValues {
     picked[property] = styles[property] ?? ""
   }
   return picked
+}
+
+/**
+ * The recorded attributes, or null when the element carries none of them.
+ *
+ * Null rather than an empty object so a `screens` document does not carry an
+ * empty field for every div on the page, which is most of them.
+ */
+function pickAttributes(attributes: Record<string, string>): ElementAttributes | null {
+  const picked: ElementAttributes = {}
+  if (attributes.type) picked.type = attributes.type
+  if (attributes.role) picked.role = attributes.role
+  return picked.type || picked.role ? picked : null
 }
 
 /** One decimal place: sub-pixel jitter would read as drift on every run. */

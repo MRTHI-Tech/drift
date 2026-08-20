@@ -65,6 +65,8 @@ const READINGS: Record<string, PropertyReading> = {
   display: { kind: "layout", label: "Layout mode" },
   gap: { kind: "spacing", label: "Space between blocks" },
   "max-width": { kind: "layout", label: "Content width" },
+  "border-width": { kind: "shape", label: "Border weight" },
+  "border-style": { kind: "shape", label: "Border style" },
 
   // Measured against a convention, as the profile names them.
   "cta.label": { kind: "wording", label: "Button wording" },
