@@ -8,6 +8,7 @@
  */
 
 import {
+  countOpenProblems,
   driftScoreSeries,
   type DriftScorePoint,
   type Project,
@@ -44,8 +45,9 @@ export async function loadScoreTrend(
 
   return {
     score: project.driftScore,
-    openFindings: findings.filter((finding) => finding.status === "open")
-      .length,
+    // Problems, so the footer, the nav badge and the score itself are all
+    // counting the same thing.
+    openFindings: countOpenProblems(findings),
     screensChecked: distinct,
     points: driftScoreSeries(runs, findings, screensByRun),
   }

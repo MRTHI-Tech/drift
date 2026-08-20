@@ -2,10 +2,22 @@
  * The drift score: how much of what Drift has looked at is still unresolved.
  *
  * One number, 0 to 100, where 100 is a product with nothing open against it.
- * It is a ratio of open findings to screens checked, and nothing else: no
+ * It is a ratio of open problems to screens checked, and nothing else: no
  * weighting by severity, no decay over time, no opinion about which kind of
  * finding matters more. A number a person cannot reconstruct from what they can
- * see on the findings page is a number they will stop trusting.
+ * see on the findings page is a number they will stop trusting, and that
+ * sentence is why this file has now been changed twice.
+ *
+ * It used to subtract, one open finding per screen scoring zero, and against a
+ * real project that turned out to mean the number never moved. MRTHI-Tech/woven
+ * had 26 findings across 12 screens, so it read zero, and it would have gone on
+ * reading zero until fifteen of them were resolved. A headline number that sits
+ * at the floor through most of the work is worse than no number.
+ *
+ * It also counted sightings, while the findings page counts problems. The same
+ * grey on twelve screens is one thing to fix and the page says so, so a score
+ * derived from twelve was already a number nobody could reconstruct from what
+ * they were looking at.
  *
  * Counted, never modelled (AGENTS.md section 4). Persisted on the project so
  * the dashboard reads one value rather than recomputing it per render, and
@@ -13,12 +25,16 @@
  * person resolving one.
  */
 
+import { causeKeyOf } from "./dedupe"
 import type { Repositories } from "./repositories"
 import type { Finding, Run } from "./types"
 
 /** The whole score, at one moment. */
 export interface DriftScoreInput {
-  /** Findings still waiting for a decision. */
+  /**
+   * Problems still waiting for a decision, counted by cause: the same value
+   * missing the same token on twelve screens is one.
+   */
   openFindings: number
   /** Screens the project has captured, counted once per route and viewport. */
   screensChecked: number
@@ -37,17 +53,32 @@ export interface DriftScorePoint {
 export const MAX_DRIFT_SCORE = 100
 
 /**
- * The score. One open finding per screen checked is 0; none is 100. A project
- * that has checked nothing scores 100, because nothing has been found against
- * it, and the screen count beside the score is what says how little that means.
+ * The score. Nothing open is 100, one problem per screen checked is 50, and
+ * every problem after that costs less than the one before without ever
+ * reaching the floor.
+ *
+ * Dividing rather than subtracting is the whole change. Subtracting hits zero
+ * at one problem per screen and stays there however much worse things get,
+ * which means it also stays there through the first half of getting better.
+ * Dividing keeps moving: every problem resolved raises the number, which is
+ * the only property that makes it worth putting on a wall.
+ *
+ * A project that has checked nothing scores 100, because nothing has been
+ * found against it, and the screen count beside the score is what says how
+ * little that means.
  */
 export function computeDriftScore(input: DriftScoreInput): number {
   if (input.screensChecked <= 0) return MAX_DRIFT_SCORE
+  if (input.openFindings <= 0) return MAX_DRIFT_SCORE
 
   const openPerScreen = input.openFindings / input.screensChecked
-  const score = Math.round(MAX_DRIFT_SCORE * (1 - openPerScreen))
+  const score = Math.round(MAX_DRIFT_SCORE / (1 + openPerScreen))
 
-  return Math.min(MAX_DRIFT_SCORE, Math.max(0, score))
+  // 100 is reserved for a project with nothing open, which is what the number
+  // is documented to mean. One problem across a thousand screens rounds to it
+  // otherwise, and a perfect score with something still waiting is a lie in
+  // the largest text on the page.
+  return Math.min(MAX_DRIFT_SCORE - 1, Math.max(0, score))
 }
 
 /** Whether a finding was still waiting for a decision at a moment in time. */
@@ -60,6 +91,20 @@ export function wasOpenAt(finding: Finding, at: Date): boolean {
 /** Findings still waiting for a decision now. */
 export function countOpen(findings: readonly Finding[]): number {
   return findings.filter((finding) => finding.status === "open").length
+}
+
+/**
+ * Open problems, counted by cause rather than by sighting. The same value
+ * missing the same token on twelve screens is one problem, which is what the
+ * findings page shows and therefore what the score has to agree with.
+ */
+export function countOpenProblems(findings: readonly Finding[]): number {
+  const causes = new Set<string>()
+  for (const finding of findings) {
+    if (finding.status !== "open") continue
+    causes.add(causeKeyOf(finding))
+  }
+  return causes.size
 }
 
 /**
@@ -93,7 +138,10 @@ export function driftScoreSeries(
     const screensChecked = captured > 0 ? captured : carried
     carried = screensChecked
 
-    const openFindings = findings.filter((finding) => wasOpenAt(finding, at)).length
+    // Problems, not sightings, so a point on the sparkline means the same
+    // thing as the number printed above it.
+    const openAt = findings.filter((finding) => wasOpenAt(finding, at))
+    const openFindings = new Set(openAt.map((finding) => causeKeyOf(finding))).size
 
     points.push({
       runId: run.id,
@@ -132,7 +180,7 @@ export async function refreshDriftScore(
   const screens = await repositories.screens.listSummaries(projectId)
 
   const input: DriftScoreInput = {
-    openFindings: open.length,
+    openFindings: countOpenProblems(open),
     screensChecked: distinctScreens(screens),
   }
   const score = computeDriftScore(input)

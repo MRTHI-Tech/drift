@@ -40,7 +40,7 @@ export function DriftScoreFooter({
       </div>
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        {count(trend.openFindings, "open finding")} across{" "}
+        {count(trend.openFindings, "open problem")} across{" "}
         {count(trend.screensChecked, "screen")} checked.
         {movement !== null && movement !== 0
           ? ` ${movement > 0 ? "Up" : "Down"} ${Math.abs(movement)} since the run before last.`

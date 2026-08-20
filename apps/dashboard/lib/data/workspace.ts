@@ -12,6 +12,7 @@
  */
 
 import {
+  countOpenProblems,
   createRepositories,
   refreshDriftScore,
   type Project,
@@ -66,10 +67,13 @@ export async function loadWorkspace(): Promise<Workspace | null> {
   const current =
     projects.find((project) => project.id === chosen) ?? projects[0]
 
+  // Problems, not sightings. The nav badge sits beside a page whose first line
+  // is a count of problems, and two numbers a person reads in one glance have
+  // to be the same number.
   const summaries: ProjectSummary[] = []
   for (const project of projects) {
     const open = await repos.findings.listOpen(project.id)
-    summaries.push({ project, openFindings: open.length })
+    summaries.push({ project, openFindings: countOpenProblems(open) })
   }
 
   // The score is stored on the project and moved by the two things that move
