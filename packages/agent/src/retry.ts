@@ -17,6 +17,18 @@ export interface AttemptOptions<T> {
   logger: AgentLogger
   /** Injectable so tests do not wait. */
   sleep?: (ms: number) => Promise<void>
+  /**
+   * Whether a failure is worth a second attempt. Defaults to yes, which is
+   * what every call assumed before the Fixer existed.
+   *
+   * The rule in AGENTS.md section 4 caps retries at one; it does not require
+   * spending that one on a failure that cannot come out differently. A model
+   * that ran out of tool calls will run out of them again, and against a real
+   * repo that cost four minutes to arrive at the same empty answer twice.
+   */
+  retryable?: (error: unknown) => boolean
+  /** Wait before the second attempt. Defaults to `RETRY_BACKOFF_MS`. */
+  backoffMs?: number
 }
 
 const wait = (ms: number): Promise<void> =>
@@ -33,6 +45,7 @@ export async function attemptOrEmpty<T>(
   options: AttemptOptions<T>,
 ): Promise<T> {
   const sleep = options.sleep ?? wait
+  const retryable = options.retryable ?? (() => true)
 
   try {
     return await call()
@@ -42,9 +55,19 @@ export async function attemptOrEmpty<T>(
       attempt: 1,
       message: errorMessage(error),
     })
+
+    if (!retryable(error)) {
+      options.logger.error("model.gave_up", {
+        call: options.name,
+        attempt: 1,
+        retried: false,
+        message: errorMessage(error),
+      })
+      return options.empty
+    }
   }
 
-  await sleep(RETRY_BACKOFF_MS)
+  await sleep(options.backoffMs ?? RETRY_BACKOFF_MS)
 
   try {
     return await call()

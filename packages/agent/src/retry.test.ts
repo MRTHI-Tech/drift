@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { silentLogger, type AgentLogger } from "./logging"
+import { isWorthAskingAgain } from "./flows/propose-fix"
 import { attemptOrEmpty } from "./retry"
 
 const noWait = async (): Promise<void> => {}
@@ -102,3 +103,94 @@ describe("attemptOrEmpty", () => {
     expect(waits).toEqual([750])
   })
 })
+
+describe("attemptOrEmpty, on a failure that cannot come out differently", () => {
+  it("does not spend the retry", async () => {
+    let calls = 0
+
+    const result = await attemptOrEmpty(
+      async () => {
+        calls += 1
+        throw new Error("ABORTED: Exceeded maximum tool call iterations (20)")
+      },
+      {
+        name: "test",
+        empty: "",
+        logger: silentLogger,
+        sleep: noWait,
+        retryable: () => false,
+      },
+    )
+
+    expect(result).toBe("")
+    expect(calls).toBe(1)
+  })
+
+  it("still says it gave up, so the run log reads the same either way", async () => {
+    const logger = recordingLogger()
+
+    await attemptOrEmpty(
+      async () => {
+        throw new Error("ABORTED")
+      },
+      { name: "test", empty: "", logger, sleep: noWait, retryable: () => false },
+    )
+
+    expect(logger.errors).toEqual(["model.attempt_failed", "model.gave_up"])
+  })
+
+  it("retries everything when the caller does not say otherwise", async () => {
+    let calls = 0
+
+    await attemptOrEmpty(
+      async () => {
+        calls += 1
+        throw new Error("anything")
+      },
+      { name: "test", empty: "", logger: silentLogger, sleep: noWait },
+    )
+
+    expect(calls).toBe(2)
+  })
+
+  it("waits as long as the caller asked before trying again", async () => {
+    const waits: number[] = []
+
+    await attemptOrEmpty(
+      async () => {
+        throw new Error("503")
+      },
+      {
+        name: "test",
+        empty: "",
+        logger: silentLogger,
+        sleep: async (ms) => {
+          waits.push(ms)
+        },
+        backoffMs: 5000,
+      },
+    )
+
+    expect(waits).toEqual([5000])
+  })
+})
+
+describe("isWorthAskingAgain", () => {
+  it("is false for a model that ran out of tool calls", () => {
+    expect(isWorthAskingAgain(new Error("ABORTED: Exceeded maximum tool call iterations (20)"))).toBe(
+      false,
+    )
+  })
+
+  it("is true for a service that could not answer", () => {
+    expect(
+      isWorthAskingAgain(new Error("UNAVAILABLE: [503 Service Unavailable] high demand")),
+    ).toBe(true)
+  })
+
+  it("is true for anything it does not recognise", () => {
+    expect(isWorthAskingAgain(new Error("socket hang up"))).toBe(true)
+    expect(isWorthAskingAgain("not an error at all")).toBe(true)
+  })
+})
+

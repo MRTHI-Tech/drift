@@ -67,7 +67,7 @@ Any finding proposed by a model call must be verified against the `computedStyle
 
 - Deterministic first, always. Rendering, extraction, token diffing, dedupe, and signature construction never call a model.
 - Model calls are limited to: archetype classification, pattern-drift judgment over pre-computed candidates, convention labelling, PR/rules-file prose, and the Fixer (section 10a). The Fixer is the only model call that reads a watched repo's source, the only one that calls tools, and the only one whose output is code.
-- Every model call uses structured output (JSON schema via Genkit) and is wrapped in a single retry with backoff. A second failure returns empty, never throws into the pipeline.
+- Every model call uses structured output (JSON schema via Genkit) and is wrapped in **at most** one retry with backoff. A second failure returns empty, never throws into the pipeline. At most, because the cap is on how many times a call may be made and not on how many must be: a failure that cannot come out differently is not retried at all. Running out of tool calls is the case that prompted this, where against a real repo the retry cost four minutes to reach the same empty answer twice. A caller says which failures are worth a second attempt by passing `retryable` to `attemptOrEmpty`; the default, and every call that does not pass one, retries everything as before.
 - Prompts live in `packages/agent/src/prompts/` as named exports, one file per flow. No inline prompt strings.
 
 ## 5. Design system and shadcn/ui rules (this section prevents drift in Drift itself)

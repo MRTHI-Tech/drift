@@ -77,6 +77,24 @@ export const MAX_FIX_TURNS = 20
 /** Wait before the one retry every model call gets (AGENTS.md section 4). */
 export const RETRY_BACKOFF_MS = 750
 
+/**
+ * Wait before retrying a call the model's own service refused.
+ *
+ * Longer than the ordinary backoff, and measured rather than guessed: a live
+ * run met `503 This model is currently experiencing high demand` twice in a
+ * row, 750ms apart, which is not long enough for a spike in demand to pass.
+ * One retry is still all any call gets (AGENTS.md section 4), so the one it
+ * gets should be worth taking.
+ */
+export const OVERLOADED_BACKOFF_MS = 5_000
+
+/**
+ * Times the Fixer may ask the same question before it is told it is repeating
+ * itself. A second look at a file is ordinary; a fourth is a Fixer going in
+ * circles, and against a real repo that circling was what burned the turns.
+ */
+export const MAX_REPEATED_TOOL_CALLS = 3
+
 /** Longest evidence sentence kept. Past this it is a paragraph, not a line. */
 export const MAX_SENTENCE_LENGTH = 240
 

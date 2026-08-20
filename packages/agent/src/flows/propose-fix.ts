@@ -37,7 +37,11 @@ import {
 } from "@drift/core"
 import { z } from "genkit"
 
-import { MAX_FIX_TURNS } from "../constants"
+import {
+  MAX_FIX_TURNS,
+  MAX_REPEATED_TOOL_CALLS,
+  OVERLOADED_BACKOFF_MS,
+} from "../constants"
 import { ai } from "../genkit"
 import { silentLogger, type AgentLogger } from "../logging"
 import { PROPOSE_FIX_SYSTEM, PROPOSE_FIX_TASK } from "../prompts"
@@ -118,6 +122,17 @@ const EMPTY: ProposeFixOutput = {
  * outliving it.
  */
 function repoToolsFor(files: readonly SourceFile[], logger: AgentLogger) {
+  // What has been asked already. A Fixer that is working reads a file once and
+  // moves on; one that is stuck reads it four times, and saying so is cheaper
+  // than letting it spend the rest of its turns finding that out.
+  const asked = new Map<string, number>()
+  const repeating = (question: string): string => {
+    const seen = (asked.get(question) ?? 0) + 1
+    asked.set(question, seen)
+    if (seen < MAX_REPEATED_TOOL_CALLS) return ""
+    return ` You have asked this ${seen} times and the answer has not changed. Decide with what you have, or return no edits.`
+  }
+
   return [
     ai.dynamicTool(
       {
@@ -129,12 +144,14 @@ function repoToolsFor(files: readonly SourceFile[], logger: AgentLogger) {
           hits: z.array(z.object({ path: z.string(), line: z.number(), text: z.string() })),
           total: z.number(),
           truncated: z.boolean(),
+          note: z.string(),
         }),
       },
       async ({ query }) => {
         const found = searchRepo(files, query)
-        logger.log("fixer.tool", { tool: "searchRepo", query, hits: found.total })
-        return found
+        const note = repeating(`search:${query}`)
+        logger.log("fixer.tool", { tool: "searchRepo", query, hits: found.total, repeated: note !== "" })
+        return { ...found, note }
       },
     ),
     ai.dynamicTool(
@@ -154,13 +171,15 @@ function repoToolsFor(files: readonly SourceFile[], logger: AgentLogger) {
             to: z.number(),
             total: z.number(),
             text: z.string(),
+            note: z.string(),
           })
           .nullable(),
       },
       async ({ path, from, to }) => {
         const slice = readRepoFile(files, path, from ?? 1, to)
-        logger.log("fixer.tool", { tool: "readRepoFile", path, found: slice !== null })
-        return slice
+        const note = repeating(`read:${path}:${from ?? 1}:${to ?? ""}`)
+        logger.log("fixer.tool", { tool: "readRepoFile", path, found: slice !== null, repeated: note !== "" })
+        return slice === null ? null : { ...slice, note }
       },
     ),
     ai.dynamicTool(
@@ -177,6 +196,21 @@ function repoToolsFor(files: readonly SourceFile[], logger: AgentLogger) {
       },
     ),
   ]
+}
+
+/**
+ * Whether a failed call could come out differently the second time.
+ *
+ * Both of these were met against a real repo. `ABORTED` on tool-call
+ * iterations is the model having spent its budget, which it will spend again;
+ * retrying it doubled the worst case to four minutes for the same empty
+ * answer. `UNAVAILABLE` is the service under load, which is exactly what a
+ * retry is for.
+ */
+export function isWorthAskingAgain(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/ABORTED|maximum tool call iterations/i.test(message)) return false
+  return true
 }
 
 export const proposeFixFlow = ai.defineFlow(
@@ -218,7 +252,15 @@ export async function proposeFix(
       })
       return { edits: response.output?.edits ?? [], note: response.output?.note ?? "" }
     },
-    { name: "proposeFix", empty: { edits: [], note: "" }, logger },
+    {
+      name: "proposeFix",
+      empty: { edits: [], note: "" },
+      logger,
+      // A Fixer that ran out of tool calls will run out of them again. Only a
+      // service that could not answer is worth asking twice.
+      retryable: isWorthAskingAgain,
+      backoffMs: OVERLOADED_BACKOFF_MS,
+    },
   )
 
   // The gate. Nothing returns from this function without passing it.
