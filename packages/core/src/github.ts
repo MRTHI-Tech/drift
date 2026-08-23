@@ -850,6 +850,33 @@ export interface PullRequestRef {
  * write. Idempotent on purpose: resolving the same finding twice updates a
  * pull request rather than stacking a second one beside it.
  */
+/**
+ * What became of a pull request: merged, still open, or closed without being
+ * merged. Null when it cannot be read at all.
+ *
+ * This is what separates "the fix has not landed yet", which is unremarkable,
+ * from "the fix landed and the drift is still there", which is not. Both look
+ * identical from the render alone.
+ */
+export type PullRequestFate = "merged" | "open" | "closed"
+
+export async function pullRequestFate(
+  octokit: Octokit,
+  repo: string,
+  number: number,
+): Promise<PullRequestFate | null> {
+  const target = parseRepo(repo)
+
+  try {
+    const response = await octokit.rest.pulls.get({ ...target, pull_number: number })
+    if (response.data.merged) return "merged"
+    return response.data.state === "open" ? "open" : "closed"
+  } catch (cause) {
+    if (isNotFound(cause)) return null
+    throw new GitHubError(`Could not read ${repo}#${number}. ${describe(cause)}`, { cause })
+  }
+}
+
 export async function openPullRequest(
   octokit: Octokit,
   { repo, head, base, title, body, draft = false }: PullRequestInput,

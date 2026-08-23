@@ -38,6 +38,7 @@
  * so its value staying is the success and its absence would be the surprise.
  */
 
+import type { PullRequestFate } from "./github"
 import type { Finding } from "./types"
 
 /** What the run saw, and which findings a fix was proposed for. */
@@ -51,6 +52,13 @@ export interface VerificationInput {
   observed: ReadonlySet<string>
   /** Routes this run rendered. */
   routes: ReadonlySet<string>
+  /**
+   * What became of each finding's pull request, by finding id. A finding
+   * missing from here is treated as pending: an unknown fate is not evidence
+   * that a fix failed, and guessing would put a false alarm in the one bucket
+   * that exists to be believed.
+   */
+  fates?: ReadonlyMap<string, PullRequestFate>
   /** The route each finding's screen sat on, by screen id. */
   routeOf: ReadonlyMap<string, string>
 }
@@ -59,10 +67,21 @@ export interface VerificationResult {
   /** The value is gone. The fix worked, and this is the evidence it did. */
   fixed: Finding[]
   /**
-   * The value is still being rendered. Whatever happened to the pull request,
-   * the product did not change.
+   * The pull request was merged and the value is still being rendered. This is
+   * the one worth waking somebody for: a change everybody believed was a fix
+   * went in, and the product did not move.
    */
-  unfixed: Finding[]
+  ineffective: Finding[]
+  /**
+   * The pull request has not been merged, so the value still being there is
+   * exactly what anybody would expect. Reported, never alarming.
+   */
+  pending: Finding[]
+  /**
+   * The pull request was closed without being merged. The drift is real and
+   * nothing is coming to fix it.
+   */
+  abandoned: Finding[]
   /**
    * The route was not rendered this run, so there is no evidence either way.
    * Silence here is honest rather than a pass.
@@ -75,7 +94,13 @@ export interface VerificationResult {
  * checked. Pure: the same run over the same findings always answers the same.
  */
 export function verifyFixes(input: VerificationInput): VerificationResult {
-  const result: VerificationResult = { fixed: [], unfixed: [], unchecked: [] }
+  const result: VerificationResult = {
+    fixed: [],
+    ineffective: [],
+    pending: [],
+    abandoned: [],
+    unchecked: [],
+  }
 
   for (const finding of input.claimed) {
     if (!checkable(finding)) continue
@@ -86,8 +111,17 @@ export function verifyFixes(input: VerificationInput): VerificationResult {
       continue
     }
 
-    if (input.observed.has(finding.dedupeKey)) result.unfixed.push(finding)
-    else result.fixed.push(finding)
+    if (!input.observed.has(finding.dedupeKey)) {
+      result.fixed.push(finding)
+      continue
+    }
+
+    // Still on the screen. Which of three things that means depends entirely
+    // on what happened to the pull request.
+    const fate = input.fates?.get(finding.id) ?? "open"
+    if (fate === "merged") result.ineffective.push(finding)
+    else if (fate === "closed") result.abandoned.push(finding)
+    else result.pending.push(finding)
   }
 
   return result

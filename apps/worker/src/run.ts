@@ -23,10 +23,12 @@ import {
   fetchTokenDefinitions,
   openAutonomousPullRequests,
   persistTokenFindings,
+  pullRequestFate,
   tokenDedupeKey,
   verifyFixes,
   uploadScreenshot,
   type AutonomousRunResult,
+  type PullRequestFate,
   type VerificationResult,
   type DriftConfig,
   type Finding,
@@ -154,7 +156,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
     // saw and nothing a model says can change the answer.
     const verification = dryRun
       ? null
-      : await verifyRun({ project, repositories, observedKeys, renderedRoutes, logger })
+      : await verifyRun({ project, github, repositories, observedKeys, renderedRoutes, logger })
 
     // Judgment runs once, over everything the run captured, because an
     // archetype and its conventions are a property of the set rather than of
@@ -211,9 +213,9 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       pullRequestsOpened: actuation?.opened.length ?? 0,
       findingsWaiting: actuation?.waiting.length ?? 0,
       fixesConfirmed: verification?.fixed.length ?? 0,
-      // Not "reopened": most of these were never closed. A pull request was
-      // opened for each and the value it was meant to change is still there.
-      fixesStillDrifting: verification?.unfixed.length ?? 0,
+      // The one that matters: merged, and the drift is still there.
+      fixesIneffective: verification?.ineffective.length ?? 0,
+      fixesPending: verification?.pending.length ?? 0,
       failed: failures.length,
       durationMs: Date.now() - startedAt.getTime(),
     })
@@ -504,6 +506,7 @@ interface ActuateRunInput {
 
 interface VerifyRunInput {
   project: Project
+  github: GitHubClient
   repositories: Repositories
   observedKeys: Set<string>
   renderedRoutes: Set<string>
@@ -534,11 +537,33 @@ async function verifyRun(input: VerifyRunInput): Promise<VerificationResult | nu
     if (claimed.length === 0) return null
 
     const summaries = await input.repositories.screens.listSummaries(input.project.id)
+
+    // What became of each pull request. Without this, a fix waiting to be
+    // merged and a fix that was merged and did nothing read identically, and
+    // only the second one is worth anybody's attention.
+    const fates = new Map<string, PullRequestFate>()
+    for (const finding of claimed) {
+      if (finding.prNumber === null) continue
+      try {
+        const fate = await pullRequestFate(input.github, input.project.repo, finding.prNumber)
+        if (fate) fates.set(finding.id, fate)
+      } catch (error) {
+        // An unreadable pull request leaves the finding pending, which is the
+        // quiet answer. Guessing would put a false alarm among the real ones.
+        input.logger.error("verify.pull_request_unreadable", {
+          findingId: finding.id,
+          pullRequest: finding.prNumber,
+          message: errorMessage(error),
+        })
+      }
+    }
+
     const result = verifyFixes({
       claimed,
       observed: input.observedKeys,
       routes: input.renderedRoutes,
       routeOf: new Map(summaries.map((screen) => [screen.id, screen.route])),
+      fates,
     })
 
     // A finding whose value is gone is not true any more, so it does not stay
@@ -553,10 +578,9 @@ async function verifyRun(input: VerifyRunInput): Promise<VerificationResult | nu
       await input.repositories.findings.update(finding.id, { verifiedAt: new Date() })
     }
 
-    // Still on the screen. A finding somebody closed reopens; one that was
-    // never closed simply stays open, and the log is what says the pull
-    // request it carries did not do the job.
-    for (const finding of result.unfixed) {
+    // Still on the screen, whatever became of the pull request. A finding
+    // somebody closed reopens; one that was never closed simply stays open.
+    for (const finding of [...result.ineffective, ...result.pending, ...result.abandoned]) {
       if (finding.status !== "open") {
         await input.repositories.findings.setStatus(finding.id, "open")
       }
@@ -568,13 +592,15 @@ async function verifyRun(input: VerifyRunInput): Promise<VerificationResult | nu
         findingId: finding.id,
         pullRequest: finding.prNumber,
       })),
-      // The useful line. A pull request was opened for each of these and the
-      // value it was meant to change is still being rendered.
-      stillDrifting: result.unfixed.map((finding) => ({
+      // The line worth reading. These went in and the product did not move.
+      ineffective: result.ineffective.map((finding) => ({
         findingId: finding.id,
         pullRequest: finding.prNumber,
         value: finding.evidence.observedValue,
       })),
+      // Drift still there, and nothing surprising about it.
+      pending: result.pending.map((finding) => finding.prNumber),
+      abandoned: result.abandoned.map((finding) => finding.prNumber),
       unchecked: result.unchecked.length,
     })
 

@@ -33,7 +33,7 @@ describe("verifyFixes", () => {
 
     const result = verify([finding], ["f1-key"])
 
-    expect(result.unfixed.map((entry) => entry.id)).toEqual(["f1"])
+    expect(result.pending.map((entry) => entry.id)).toEqual(["f1"])
     expect(result.fixed).toEqual([])
   })
 
@@ -44,7 +44,7 @@ describe("verifyFixes", () => {
 
     expect(result.unchecked.map((entry) => entry.id)).toEqual(["f1"])
     expect(result.fixed).toEqual([])
-    expect(result.unfixed).toEqual([])
+    expect(result.pending).toEqual([])
   })
 
   it("never treats a missing route as a pass", () => {
@@ -64,17 +64,19 @@ describe("verifyFixes", () => {
     // success, so checking for its absence would have it backwards.
     expect(verify([resolved("f1", "resolved_update_siblings")], ["f1-key"])).toEqual({
       fixed: [],
-      unfixed: [],
+      ineffective: [],
+      pending: [],
+      abandoned: [],
       unchecked: [],
     })
   })
 
   it("never reopens an exception, which is permanent", () => {
-    expect(verify([resolved("f1", "resolved_exception")], ["f1-key"]).unfixed).toEqual([])
+    expect(verify([resolved("f1", "resolved_exception")], ["f1-key"]).pending).toEqual([])
   })
 
   it("ignores a dismissal", () => {
-    expect(verify([resolved("f1", "dismissed")], ["f1-key"]).unfixed).toEqual([])
+    expect(verify([resolved("f1", "dismissed")], ["f1-key"]).pending).toEqual([])
   })
 
   it("checks a finding nobody closed, because merging does not close one", () => {
@@ -82,7 +84,7 @@ describe("verifyFixes", () => {
     // and whether it worked is a question only the render answers.
     const result = verify([resolved("f1", "open")], ["f1-key"])
 
-    expect(result.unfixed.map((entry) => entry.id)).toEqual(["f1"])
+    expect(result.pending.map((entry) => entry.id)).toEqual(["f1"])
   })
 
   it("confirms an open finding whose value has gone", () => {
@@ -100,7 +102,7 @@ describe("verifyFixes", () => {
     )
 
     expect(result.fixed.map((f) => f.id)).toEqual(["gone"])
-    expect(result.unfixed.map((f) => f.id)).toEqual(["still"])
+    expect(result.pending.map((f) => f.id)).toEqual(["still"])
     expect(result.unchecked.map((f) => f.id)).toEqual(["elsewhere"])
   })
 })
@@ -126,3 +128,66 @@ describe("claimedFixes", () => {
     expect(claimedFixes([resolved("f1", "open", "k", "screen-pricing", null)])).toEqual([])
   })
 })
+
+describe("verifyFixes, on what became of the pull request", () => {
+  const stillThere = (fate: "merged" | "open" | "closed") =>
+    verifyFixes({
+      claimed: [resolved("f1", "open")],
+      observed: new Set(["f1-key"]),
+      routes: rendered,
+      routeOf,
+      fates: new Map([["f1", fate]]),
+    })
+
+  it("calls a merged fix that changed nothing ineffective", () => {
+    // The line worth waking somebody for. It went in and the product did not
+    // move, which is exactly what happened to MRTHI-Tech/woven#3.
+    const result = stillThere("merged")
+
+    expect(result.ineffective.map((f) => f.id)).toEqual(["f1"])
+    expect(result.pending).toEqual([])
+  })
+
+  it("does not call an unmerged fix a failure", () => {
+    const result = stillThere("open")
+
+    expect(result.pending.map((f) => f.id)).toEqual(["f1"])
+    expect(result.ineffective).toEqual([])
+  })
+
+  it("separates a fix somebody closed without merging", () => {
+    const result = stillThere("closed")
+
+    expect(result.abandoned.map((f) => f.id)).toEqual(["f1"])
+    expect(result.ineffective).toEqual([])
+  })
+
+  it("treats an unreadable pull request as pending, never as a failure", () => {
+    // An unknown fate is not evidence a fix failed, and a false alarm in the
+    // one bucket that exists to be believed is worse than a quiet one.
+    const result = verifyFixes({
+      claimed: [resolved("f1", "open")],
+      observed: new Set(["f1-key"]),
+      routes: rendered,
+      routeOf,
+      fates: new Map(),
+    })
+
+    expect(result.pending.map((f) => f.id)).toEqual(["f1"])
+    expect(result.ineffective).toEqual([])
+  })
+
+  it("never asks what became of a pull request whose value has gone", () => {
+    const result = verifyFixes({
+      claimed: [resolved("f1", "open")],
+      observed: new Set(),
+      routes: rendered,
+      routeOf,
+      fates: new Map([["f1", "closed"]]),
+    })
+
+    expect(result.fixed.map((f) => f.id)).toEqual(["f1"])
+    expect(result.abandoned).toEqual([])
+  })
+})
+
