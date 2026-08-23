@@ -6,5 +6,6 @@
       "Bash(git --version)",
       "Bash(git -C /Users/tlotliso/Desktop/Drift status)"
     ]
-  }
+  },
+  "outputStyle": "Concise"
 }
