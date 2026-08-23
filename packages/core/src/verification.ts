@@ -18,20 +18,31 @@
  * fixed it checks whether the value is still there. Nothing new is rendered
  * and nothing new is measured: the answer is already in what the run just did.
  *
- * Only `resolved_conform` is checked, and the reason is worth stating. That
- * action means this screen should change, so the value going away is exactly
- * what success looks like. `resolved_update_siblings` means the opposite, that
- * this screen was right and the others move, so its value staying is success
- * and its absence would be the surprise. An exception means a person said the
- * screen is allowed to differ, permanently, and asking again would be Drift
- * relitigating a decision it was told to respect (AGENTS.md section 6).
+ * What makes a finding worth asking about is that it carries a pull request
+ * number, not what status it holds. The first version of this asked only about
+ * findings resolved as `conform`, and against the real project that turned out
+ * to be almost nothing: merging a pull request does not resolve the finding it
+ * came from, so a merged fix left its finding open and invisible to the check
+ * built to examine it.
+ *
+ * The merge is also not the evidence. A pull request opened for this finding
+ * was merged, the branch went to `main`, the preview redeployed, and the value
+ * it was supposed to change is still on the screen. Anything that concluded
+ * "merged, therefore fixed" would have closed a finding that is still true.
+ * The render is the evidence and the only evidence.
+ *
+ * Two statuses are left alone whatever they carry. An exception means a person
+ * said the screen is allowed to differ, permanently, and asking again would be
+ * Drift relitigating a decision it was told to respect (AGENTS.md section 6).
+ * `resolved_update_siblings` means this screen was right and the others move,
+ * so its value staying is the success and its absence would be the surprise.
  */
 
 import type { Finding } from "./types"
 
-/** What the run saw, and which findings claimed to have been fixed. */
+/** What the run saw, and which findings a fix was proposed for. */
 export interface VerificationInput {
-  /** Findings resolved as `conform`, whose values should be gone. */
+  /** Findings carrying a pull request, whose values should be gone. */
   claimed: readonly Finding[]
   /**
    * Every dedupe key the render just raised. A claimed finding whose key is
@@ -67,7 +78,7 @@ export function verifyFixes(input: VerificationInput): VerificationResult {
   const result: VerificationResult = { fixed: [], unfixed: [], unchecked: [] }
 
   for (const finding of input.claimed) {
-    if (finding.status !== "resolved_conform") continue
+    if (!checkable(finding)) continue
 
     const route = input.routeOf.get(finding.screenId)
     if (route === undefined || !input.routes.has(route)) {
@@ -82,9 +93,24 @@ export function verifyFixes(input: VerificationInput): VerificationResult {
   return result
 }
 
-/** The findings worth asking about at all: resolved as conform, and token. */
+/**
+ * Whether this finding's answer is decided by the value being gone.
+ *
+ * Open counts, because a merged pull request leaves its finding open and that
+ * is the ordinary case rather than the exception.
+ */
+function checkable(finding: Finding): boolean {
+  return finding.status === "open" || finding.status === "resolved_conform"
+}
+
+/**
+ * The findings worth asking about at all: a token finding that carries a pull
+ * request. The pull request is the claim, and a token finding is the only kind
+ * whose recurrence a render answers on its own.
+ */
 export function claimedFixes(findings: readonly Finding[]): Finding[] {
   return findings.filter(
-    (finding) => finding.status === "resolved_conform" && finding.type === "token",
+    (finding) =>
+      finding.type === "token" && finding.prNumber !== null && checkable(finding),
   )
 }

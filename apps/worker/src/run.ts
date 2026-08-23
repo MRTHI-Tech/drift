@@ -211,7 +211,9 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       pullRequestsOpened: actuation?.opened.length ?? 0,
       findingsWaiting: actuation?.waiting.length ?? 0,
       fixesConfirmed: verification?.fixed.length ?? 0,
-      fixesReopened: verification?.unfixed.length ?? 0,
+      // Not "reopened": most of these were never closed. A pull request was
+      // opened for each and the value it was meant to change is still there.
+      fixesStillDrifting: verification?.unfixed.length ?? 0,
       failed: failures.length,
       durationMs: Date.now() - startedAt.getTime(),
     })
@@ -539,17 +541,40 @@ async function verifyRun(input: VerifyRunInput): Promise<VerificationResult | nu
       routeOf: new Map(summaries.map((screen) => [screen.id, screen.route])),
     })
 
+    // A finding whose value is gone is not true any more, so it does not stay
+    // open. The status is set directly rather than through `resolveFinding`,
+    // because that path writes a `resolutions` document and opens a pull
+    // request, and neither belongs here: nobody decided anything, and the fix
+    // this is confirming is the one already merged.
     for (const finding of result.fixed) {
+      if (finding.status === "open") {
+        await input.repositories.findings.setStatus(finding.id, "resolved_conform")
+      }
       await input.repositories.findings.update(finding.id, { verifiedAt: new Date() })
     }
+
+    // Still on the screen. A finding somebody closed reopens; one that was
+    // never closed simply stays open, and the log is what says the pull
+    // request it carries did not do the job.
     for (const finding of result.unfixed) {
-      await input.repositories.findings.setStatus(finding.id, "open")
+      if (finding.status !== "open") {
+        await input.repositories.findings.setStatus(finding.id, "open")
+      }
     }
 
     input.logger.log("verify.done", {
       claimed: claimed.length,
-      fixed: result.fixed.length,
-      reopened: result.unfixed.map((finding) => finding.id),
+      confirmed: result.fixed.map((finding) => ({
+        findingId: finding.id,
+        pullRequest: finding.prNumber,
+      })),
+      // The useful line. A pull request was opened for each of these and the
+      // value it was meant to change is still being rendered.
+      stillDrifting: result.unfixed.map((finding) => ({
+        findingId: finding.id,
+        pullRequest: finding.prNumber,
+        value: finding.evidence.observedValue,
+      })),
       unchecked: result.unchecked.length,
     })
 

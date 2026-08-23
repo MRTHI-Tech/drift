@@ -9,8 +9,9 @@ function resolved(
   status: FindingStatus,
   dedupeKey = `${id}-key`,
   screenId = "screen-pricing",
+  prNumber: number | null = 3,
 ): Finding {
-  return { ...structuredClone(TOKEN_FINDING), id, status, dedupeKey, screenId }
+  return { ...structuredClone(TOKEN_FINDING), id, status, dedupeKey, screenId, prNumber }
 }
 
 const routeOf = new Map([["screen-pricing", "/pricing"]])
@@ -76,8 +77,16 @@ describe("verifyFixes", () => {
     expect(verify([resolved("f1", "dismissed")], ["f1-key"]).unfixed).toEqual([])
   })
 
-  it("ignores anything still open", () => {
-    expect(verify([resolved("f1", "open")], ["f1-key"]).unfixed).toEqual([])
+  it("checks a finding nobody closed, because merging does not close one", () => {
+    // The ordinary case. A pull request was merged, the finding stayed open,
+    // and whether it worked is a question only the render answers.
+    const result = verify([resolved("f1", "open")], ["f1-key"])
+
+    expect(result.unfixed.map((entry) => entry.id)).toEqual(["f1"])
+  })
+
+  it("confirms an open finding whose value has gone", () => {
+    expect(verify([resolved("f1", "open")], []).fixed.map((entry) => entry.id)).toEqual(["f1"])
   })
 
   it("sorts a mixed run into three answers", () => {
@@ -97,14 +106,23 @@ describe("verifyFixes", () => {
 })
 
 describe("claimedFixes", () => {
-  it("takes token findings a person conformed, and nothing else", () => {
+  it("takes token findings carrying a pull request, whether or not anybody closed them", () => {
     const findings = [
-      resolved("a", "resolved_conform"),
-      resolved("b", "resolved_exception"),
-      resolved("c", "open"),
-      { ...structuredClone(PATTERN_FINDING), id: "d", status: "resolved_conform" as const },
+      resolved("conformed", "resolved_conform"),
+      resolved("open-with-pr", "open"),
+      resolved("no-pr", "open", "no-pr-key", "screen-pricing", null),
+      resolved("excepted", "resolved_exception"),
+      resolved("dismissed", "dismissed"),
+      { ...structuredClone(PATTERN_FINDING), id: "pattern", prNumber: 3 },
     ]
 
-    expect(claimedFixes(findings).map((entry) => entry.id)).toEqual(["a"])
+    expect(claimedFixes(findings).map((entry) => entry.id)).toEqual([
+      "conformed",
+      "open-with-pr",
+    ])
+  })
+
+  it("never asks about a finding no fix was ever proposed for", () => {
+    expect(claimedFixes([resolved("f1", "open", "k", "screen-pricing", null)])).toEqual([])
   })
 })
