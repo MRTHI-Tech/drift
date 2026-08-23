@@ -5,6 +5,7 @@
  */
 
 export * from "./color"
+export * from "./component-findings"
 export * from "./components"
 export * from "./confidence"
 export * from "./copy"

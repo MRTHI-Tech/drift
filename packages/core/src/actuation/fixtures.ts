@@ -146,6 +146,21 @@ export const HEADING_SIZE_CONVENTION: Convention = {
   exceptions: [],
 }
 
+/**
+ * A component convention, product-wide, so the rules file has one to state
+ * without an archetype behind it.
+ */
+export const BUTTON_RADIUS_CONVENTION: Convention = {
+  ...CTA_LABEL_CONVENTION,
+  id: "convention-button-radius",
+  archetypeId: null,
+  property: "button.border-radius",
+  value: "999px",
+  label: "Buttons have a corner radius of 999px",
+  confidence: "high",
+  exceptions: [],
+}
+
 /** A signature carrying only the copy tallies the rules file reads. */
 export function signatureWithCopy(overrides: Partial<Signature["copy"]> = {}): Signature {
   const tally = {

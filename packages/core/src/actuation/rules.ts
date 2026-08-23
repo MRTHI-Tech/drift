@@ -17,6 +17,12 @@
  * diff even when the rules did not move.
  */
 
+import {
+  COMPONENT_ASPECT,
+  COMPONENT_KIND_LABEL,
+  COMPONENT_KIND_SINGULAR,
+  parseComponentProperty,
+} from "../analysis/components"
 import type { Convention, CopyCase, CopyTally, Signature } from "../types"
 import { RULES_HEADER } from "./constants"
 
@@ -74,7 +80,8 @@ export function renderRulesFile(input: RenderRulesInput): string {
     blocks.push(
       "",
       "No conventions have been measured yet. A convention needs three or more",
-      "screens agreeing before Drift states it.",
+      "screens of a family agreeing, or three or more of one kind of component,",
+      "before Drift states it.",
     )
   }
 
@@ -164,6 +171,9 @@ const RULE_ASPECTS: Record<string, string> = {
 }
 
 function instructionFor(property: string, value: string): string {
+  const component = componentInstruction(property, value)
+  if (component) return component
+
   const parts = property.split(".")
   const subject = RULE_SUBJECTS[parts[0] ?? ""]
   const aspect = RULE_ASPECTS[parts[parts.length - 1] ?? ""]
@@ -174,8 +184,28 @@ function instructionFor(property: string, value: string): string {
   return `Set the ${aspect} of ${subject} to ${value}.`
 }
 
+/**
+ * A component convention as an instruction, or null when the property is not
+ * one. Says "every", because that is what makes it a component convention
+ * rather than a screen one: it holds wherever the control appears, and an
+ * agent reading this file is about to write one somewhere new.
+ */
+function componentInstruction(property: string, value: string): string | null {
+  const component = parseComponentProperty(property)
+  if (!component) return null
+
+  const aspect = COMPONENT_ASPECT[component.styleProperty] ?? component.styleProperty
+  return `Set the ${aspect} of every ${COMPONENT_KIND_SINGULAR[component.kind]} to ${value}.`
+}
+
 /** What a convention is about, as a noun phrase an exception line can name. */
 function aspectPhrase(property: string): string {
+  const component = parseComponentProperty(property)
+  if (component) {
+    const aspect = COMPONENT_ASPECT[component.styleProperty] ?? component.styleProperty
+    return `the ${aspect} of its ${COMPONENT_KIND_LABEL[component.kind].toLowerCase()}`
+  }
+
   const parts = property.split(".")
   const subject = RULE_SUBJECTS[parts[0] ?? ""]
   const aspect = RULE_ASPECTS[parts[parts.length - 1] ?? ""]

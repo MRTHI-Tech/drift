@@ -2,12 +2,18 @@ import { describe, expect, it } from "vitest"
 
 import type { ElementStyles } from "../types"
 import {
+  COMPONENT_ASPECT,
   COMPONENT_KINDS,
   COMPONENT_KIND_LABEL,
+  COMPONENT_KIND_SINGULAR,
   COMPONENT_PROPERTIES,
+  componentConventionLabel,
   componentDivergences,
   componentKind,
+  componentProperty,
   deriveComponentConventions,
+  isComponentProperty,
+  parseComponentProperty,
   screenComponents,
 } from "./components"
 
@@ -74,8 +80,19 @@ describe("componentKind", () => {
   it("gives every kind a label and a property list", () => {
     for (const kind of COMPONENT_KINDS) {
       expect(COMPONENT_KIND_LABEL[kind]).toBeTruthy()
+      expect(COMPONENT_KIND_SINGULAR[kind]).toBeTruthy()
       expect(COMPONENT_PROPERTIES[kind].length).toBeGreaterThan(0)
     }
+  })
+
+  it("names every property any kind is judged on", () => {
+    // Without this, a property added to a kind reaches a person as a CSS
+    // keyword in the one sentence that exists to be read.
+    const unnamed = COMPONENT_KINDS.flatMap((kind) =>
+      COMPONENT_PROPERTIES[kind].filter((property) => !COMPONENT_ASPECT[property]),
+    )
+
+    expect(unnamed).toEqual([])
   })
 
   it("asks of a radio only what makes a radio look like one", () => {
@@ -259,5 +276,86 @@ describe("componentDivergences", () => {
       componentDivergences([instance("radio", "s2", "#b", { "border-radius": "4px" })], medium),
     ).toEqual([])
   })
+
+  it("does not ask again about a screen somebody has already excused", () => {
+    // An exception is permanent (AGENTS.md section 6). It is recorded on the
+    // screen, so every radio on that screen is covered by it.
+    const excused = [{ ...conventions[0]!, exceptScreenIds: ["s2"] }]
+    const departing = [
+      instance("radio", "s2", "#b", { "border-radius": "4px" }),
+      instance("radio", "s3", "#c", { "border-radius": "4px" }),
+    ]
+
+    expect(componentDivergences(departing, excused).map((entry) => entry.screenId)).toEqual(["s3"])
+  })
+
+  it("carries the convention it departs from, so a finding can point at it", () => {
+    const stored = [{ ...conventions[0]!, conventionId: "conv1" }]
+    const found = componentDivergences(
+      [instance("radio", "s2", "#b", { "border-radius": "4px" })],
+      stored,
+    )
+
+    expect(found[0]?.conventionId).toBe("conv1")
+  })
+
+  it("says null for a convention that was never stored", () => {
+    const found = componentDivergences(
+      [instance("radio", "s2", "#b", { "border-radius": "4px" })],
+      conventions,
+    )
+
+    expect(found[0]?.conventionId).toBeNull()
+  })
 })
 
+
+describe("componentProperty", () => {
+  it("reads back the kind and the property it was built from", () => {
+    const property = componentProperty("radio", "border-radius")
+
+    expect(property).toBe("radio.border-radius")
+    expect(parseComponentProperty(property)).toEqual({
+      kind: "radio",
+      styleProperty: "border-radius",
+    })
+  })
+
+  it("round trips every property every kind is judged on", () => {
+    for (const kind of COMPONENT_KINDS) {
+      for (const property of COMPONENT_PROPERTIES[kind]) {
+        expect(parseComponentProperty(componentProperty(kind, property))).toEqual({
+          kind,
+          styleProperty: property,
+        })
+      }
+    }
+  })
+
+  it("is not a component property when it is not one", () => {
+    // The other vocabulary, a property no kind is judged on, a kind that does
+    // not exist, and a bare CSS property.
+    expect(parseComponentProperty("cta.radius")).toBeNull()
+    expect(parseComponentProperty("icon.padding")).toBeNull()
+    expect(parseComponentProperty("slider.border-radius")).toBeNull()
+    expect(parseComponentProperty("border-radius")).toBeNull()
+    expect(isComponentProperty("heading.size")).toBe(false)
+  })
+})
+
+describe("componentConventionLabel", () => {
+  it("states the convention as a sentence about the product", () => {
+    expect(componentConventionLabel("radio", "border-radius", "999px")).toBe(
+      "Radio buttons have a corner radius of 999px",
+    )
+    expect(componentConventionLabel("icon", "color", "rgb(0, 0, 0)")).toBe(
+      "Icons have a colour of rgb(0, 0, 0)",
+    )
+  })
+
+  it("keeps the copy rules: no stop, no em dash, no exclamation", () => {
+    const label = componentConventionLabel("button", "font-size", "16px")
+
+    expect(label).not.toMatch(/[.!\u2014]/)
+  })
+})

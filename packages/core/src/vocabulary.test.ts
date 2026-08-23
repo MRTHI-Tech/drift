@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { COMPONENT_KINDS, COMPONENT_PROPERTIES, componentProperty } from "./analysis/components"
 import { STYLE_PROPERTIES } from "./constants"
 import {
   FINDING_KINDS,
@@ -45,6 +46,44 @@ describe("propertyReading", () => {
 
   it("reads an unknown property as itself rather than as nothing", () => {
     expect(propertyReading("stroke-dasharray").label).toBe("stroke-dasharray")
+  })
+
+  it("names a component property from its two halves", () => {
+    expect(propertyReading("radio.border-radius")).toEqual({
+      kind: "shape",
+      label: "Radio button corner radius",
+    })
+    expect(propertyReading("icon.color")).toEqual({ kind: "colour", label: "Icon colour" })
+  })
+
+  it("files a component property under the kind its CSS half belongs to", () => {
+    // A button's corner radius and a container's corner radius are the same
+    // decision about different things, which is what the table already says
+    // about `cta.radius` and `border-radius`.
+    expect(propertyReading("button.border-radius").kind).toBe(propertyReading("border-radius").kind)
+  })
+
+  it("names every component property any convention can be stated over", () => {
+    const unnamed = COMPONENT_KINDS.flatMap((kind) =>
+      COMPONENT_PROPERTIES[kind]
+        .map((property) => componentProperty(kind, property))
+        .filter((property) => !isNamedProperty(property)),
+    )
+
+    expect(unnamed).toEqual([])
+  })
+
+  it("only ever answers with a kind the filter offers, components included", () => {
+    const kinds = new Set<string>(FINDING_KINDS)
+
+    for (const kind of COMPONENT_KINDS) {
+      for (const property of COMPONENT_PROPERTIES[kind]) {
+        const reading = propertyReading(componentProperty(kind, property))
+        expect(kinds.has(reading.kind)).toBe(true)
+        expect(reading.label).not.toMatch(/[.\-]/)
+        expect(reading.label[0]).toBe(reading.label[0]?.toUpperCase())
+      }
+    }
   })
 
   it("writes every name in sentence case, with no dots or hyphens", () => {

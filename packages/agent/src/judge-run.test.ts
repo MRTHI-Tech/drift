@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { divergenceCandidates } from "./divergence"
 import { HEADING_SELECTOR, NEXT_SELECTOR, stepScreen, stepScreens } from "./fixtures"
-import { extractionSlice, latestPerRoute, uniqueLabel } from "./judge-run"
+import { componentInstancesOf, extractionSlice, latestPerRoute, uniqueLabel } from "./judge-run"
 import { buildProfile } from "./profile"
 
 const screen = stepScreen(6)
@@ -115,5 +115,30 @@ describe("uniqueLabel", () => {
 
   it("names an archetype the model would not name", () => {
     expect(uniqueLabel("   ", "mobile", new Set())).toBe("Unnamed screen")
+  })
+})
+
+describe("componentInstancesOf", () => {
+  it("reads every screen's components into one set, with no archetype consulted", () => {
+    // The whole point of a component convention: two screens that resemble
+    // nothing are still counted together, because a radio does not care which
+    // screen it is on.
+    const instances = componentInstancesOf(stepScreens())
+
+    expect(instances.length).toBeGreaterThan(0)
+    expect(new Set(instances.map((instance) => instance.screenId)).size).toBeGreaterThan(1)
+  })
+
+  it("carries the screen each instance was read from", () => {
+    const one = stepScreen(1)
+
+    for (const instance of componentInstancesOf([one])) {
+      expect(instance.screenId).toBe(one.id)
+      expect(one.computedStyles[instance.selector]).toBeDefined()
+    }
+  })
+
+  it("has nothing to say about no screens", () => {
+    expect(componentInstancesOf([])).toEqual([])
   })
 })

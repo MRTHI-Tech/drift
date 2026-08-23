@@ -1,5 +1,6 @@
 import type { Firestore } from "firebase-admin/firestore"
 
+import { isComponentProperty } from "../analysis/components"
 import { COLLECTIONS, MIN_SCREENS_PER_CONVENTION } from "../constants"
 import type { Convention } from "../types"
 import { createBaseRepository, readAll, type BaseRepository } from "./base"
@@ -38,10 +39,29 @@ export function createConventionRepository(db: Firestore): ConventionRepository 
   return {
     ...base,
 
+    /**
+     * Two floors, because there are two units.
+     *
+     * A screen convention counts screens, and three of them have to agree
+     * before it exists at all (AGENTS.md section 2). A component convention
+     * counts instances, and its floor is three of those, enforced where the
+     * counting happens because that is the only place the number exists. Four
+     * buttons agreeing across two screens is real evidence about buttons, and
+     * a guard written in screens would refuse it.
+     *
+     * So what is checked here is the one thing that holds for both: a
+     * convention nothing was measured on is not a convention.
+     */
     async create(input: NewEntity<Convention>, id?: string) {
-      if (input.evidenceScreenIds.length < MIN_SCREENS_PER_CONVENTION) {
+      const component = isComponentProperty(input.property)
+      const floor = component ? 1 : MIN_SCREENS_PER_CONVENTION
+
+      if (input.evidenceScreenIds.length < floor) {
+        const unit = component
+          ? "a screen to have been measured on"
+          : `${MIN_SCREENS_PER_CONVENTION} or more agreeing screens`
         throw new Error(
-          `A convention needs ${MIN_SCREENS_PER_CONVENTION} or more agreeing screens. ` +
+          `A convention needs ${unit}. ` +
             `Got ${input.evidenceScreenIds.length} for ${input.property}.`,
         )
       }

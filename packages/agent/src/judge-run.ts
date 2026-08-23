@@ -4,6 +4,12 @@
  * the screens and the token findings, and it is additive. Nothing it does can
  * unmake a fact the earlier phases established.
  *
+ * Components are derived here too, and they are the one part of this file that
+ * never reaches a model. They sit here because this is where a run reads every
+ * screen of a project rather than only the ones it just rendered, and a
+ * component convention is stated over all of them: what a radio looks like is
+ * not a question about which screen it is on.
+ *
  * It never throws. A model that is down, an archetype that will not form, a
  * screen that fits no cluster: each of those costs this phase a little of its
  * output and costs the run nothing (AGENTS.md sections 4 and 7). Every phase
@@ -12,14 +18,22 @@
 
 import {
   MIN_SCREENS_PER_CONVENTION,
+  componentConventionLabel,
+  componentDivergences,
+  componentProperty,
+  deriveComponentConventions,
   latestPerRoute,
+  persistComponentFindings,
+  screenComponents,
   type Archetype,
+  type ComponentInstance,
   type ComputedStyles,
   type Convention,
   type NewEntity,
   type Repositories,
   type Screen,
   type ScreenText,
+  type StatedComponentConvention,
 } from "@drift/core"
 
 import { archetypeCentroid, clusterScreens, type ArchetypeCentroid, type EmbeddedScreen } from "./cluster"
@@ -56,6 +70,10 @@ export interface JudgeRunResult {
   screensUnassigned: number
   archetypesCreated: number
   conventionsWritten: number
+  /** Component instances counted across every screen the project holds. */
+  componentInstances: number
+  /** Product-wide component conventions written, included in the count above. */
+  componentConventions: number
   /** Findings dropped by the reconciliation gate (AGENTS.md section 3). */
   reconciliationDrops: number
   /** Model proposals naming something outside the candidate list. */
@@ -69,6 +87,8 @@ const EMPTY: JudgeRunResult = {
   screensUnassigned: 0,
   archetypesCreated: 0,
   conventionsWritten: 0,
+  componentInstances: 0,
+  componentConventions: 0,
   reconciliationDrops: 0,
   outsideCandidateDrops: 0,
 }
@@ -96,14 +116,17 @@ export async function judgeRun(input: JudgeRunInput): Promise<JudgeRunResult> {
     const placement = await placeScreens(input, embedded, archetypes, members)
     const conventions = await deriveAll(input, placement, members)
     const judged = await judgeAll(input, signed, placement, conventions)
+    const components = await deriveComponentsOrNone(input, signed, members)
 
     const result: JudgeRunResult = {
-      findingIds: judged.findingIds,
+      findingIds: [...judged.findingIds, ...components.findingIds],
       screensClassified: embedded.length,
       screensAssigned: placement.assignedTo.size,
       screensUnassigned: placement.unassigned.length,
       archetypesCreated: placement.created,
-      conventionsWritten: conventions.written,
+      conventionsWritten: conventions.written + components.written,
+      componentInstances: components.instances,
+      componentConventions: components.written,
       reconciliationDrops: judged.reconciliationDrops,
       outsideCandidateDrops: judged.outsideCandidateDrops,
     }
@@ -388,7 +411,8 @@ async function deriveAll(
 
 async function upsertConvention(
   input: JudgeRunInput,
-  archetypeId: string,
+  /** Null for a convention that holds across the product rather than a family. */
+  archetypeId: string | null,
   derived: {
     property: string
     value: string
@@ -431,6 +455,151 @@ async function upsertConvention(
     evidenceScreenIds: derived.evidenceScreenIds,
     updatedAt: new Date(),
   })
+}
+
+interface ComponentResult {
+  /** Component findings this run raised. */
+  findingIds: string[]
+  /** Product-wide component conventions written. */
+  written: number
+  /** Instances counted, across every screen the project holds. */
+  instances: number
+}
+
+const NO_COMPONENTS: ComponentResult = { findingIds: [], written: 0, instances: 0 }
+
+/**
+ * The component phase, with its own failure held inside it.
+ *
+ * It runs last, after `judgeAll` has already written this run's pattern
+ * findings, and `judgeRun`'s own catch returns an empty result. So a throw
+ * here would leave those findings in Firestore with no run document listing
+ * them, which is the one shape of failure this phase must not be able to
+ * cause. Everything additive is additive on its own terms: the components cost
+ * the components.
+ */
+async function deriveComponentsOrNone(
+  input: JudgeRunInput,
+  signed: readonly CapturedScreen[],
+  members: Map<string, Screen[]>,
+): Promise<ComponentResult> {
+  try {
+    return await deriveComponents(input, signed, members)
+  } catch (error) {
+    input.logger.error("components.error", { message: errorMessage(error) })
+    return NO_COMPONENTS
+  }
+}
+
+/**
+ * What each kind of component in this product agrees on, and every instance
+ * this run rendered that departs from it.
+ *
+ * No model is called anywhere in here, and none may be. The value is read out
+ * of the extraction record by `screenComponents`, the convention is counting,
+ * and the divergence is a comparison of one value against another. Nothing is
+ * proposed, so there is nothing for the reconciliation gate to verify: the gate
+ * stands where a model speaks (AGENTS.md section 3), and this is the
+ * deterministic path token findings already take.
+ *
+ * Two different sets of screens are used on purpose. Conventions are counted
+ * over every screen the project holds, because a component convention is about
+ * the product and a run that rendered one route knows nothing about the
+ * product from that route alone. Findings are raised only on the screens this
+ * run captured, exactly as `judgeAll` does, so a run reports on what it looked
+ * at rather than on what it read.
+ */
+async function deriveComponents(
+  input: JudgeRunInput,
+  signed: readonly CapturedScreen[],
+  members: Map<string, Screen[]>,
+): Promise<ComponentResult> {
+  const captured = signed.map((entry) => entry.screen)
+  const everywhere = latestPerRoute([...captured, ...[...members.values()].flat()])
+
+  const instances = componentInstancesOf(everywhere)
+  if (instances.length === 0) {
+    input.logger.log("components.none", { screens: everywhere.length })
+    return NO_COMPONENTS
+  }
+
+  const proposals = deriveComponentConventions(instances)
+
+  input.logger.log("components.counted", {
+    screens: everywhere.length,
+    capturedThisRun: captured.length,
+    instances: instances.length,
+    conventions: proposals.map((proposal) => ({
+      kind: proposal.kind,
+      property: proposal.property,
+      value: proposal.value,
+      agreeing: proposal.agreeing,
+      of: proposal.considered,
+      confidence: proposal.confidence,
+    })),
+  })
+
+  const stated: StatedComponentConvention[] = []
+  for (const proposal of proposals) {
+    const stored = await upsertConvention(input, null, {
+      property: componentProperty(proposal.kind, proposal.property),
+      value: proposal.value,
+      label: componentConventionLabel(proposal.kind, proposal.property, proposal.value),
+      confidence: proposal.confidence,
+      evidenceScreenIds: proposal.evidenceScreenIds,
+    })
+    // Null is a convention the user removed. A removed convention states
+    // nothing, so it raises nothing either.
+    if (!stored) continue
+
+    stated.push({
+      ...proposal,
+      conventionId: stored.id,
+      exceptScreenIds: stored.exceptions.map((exception) => exception.screenId),
+    })
+  }
+
+  const capturedIds = new Set(captured.map((screen) => screen.id))
+  const divergences = componentDivergences(
+    instances.filter((instance) => capturedIds.has(instance.screenId)),
+    stated,
+  )
+
+  input.logger.log("components.divergences", {
+    conventionsWritten: stated.length,
+    // Only a high-confidence convention raises anything, which is what keeps
+    // a product with two deliberate button shapes quiet.
+    stating: stated.filter((convention) => convention.confidence === "high").length,
+    divergences: divergences.length,
+  })
+
+  const persisted = await persistComponentFindings({
+    findings: input.repositories.findings,
+    projectId: input.projectId,
+    runId: input.runId,
+    divergences,
+    routes: new Map(captured.map((screen) => [screen.id, screen.route])),
+  })
+
+  input.logger.log("components.findings_written", {
+    created: persisted.created.length,
+    alreadyKnown: persisted.alreadyKnown,
+  })
+
+  return {
+    findingIds: persisted.created.map((finding) => finding.id),
+    written: stated.length,
+    instances: instances.length,
+  }
+}
+
+/**
+ * Every component on every one of a set of screens. Exported because it is the
+ * whole of what the component phase reads, and a pure function over screens is
+ * worth being able to test without a run around it.
+ */
+export function componentInstancesOf(screens: readonly Screen[]): ComponentInstance[] {
+  return screens.flatMap((screen) => screenComponents(screen.id, screen.computedStyles))
 }
 
 interface JudgeAllResult {

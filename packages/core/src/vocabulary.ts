@@ -15,7 +15,20 @@
  * It is a table rather than a rule, because there is no rule: `cta.radius` and
  * `border-radius` are the same kind of decision with unrelated names, and the
  * only thing that knows that is somebody writing it down.
+ *
+ * With one exception, and it is an exception because there genuinely is a rule
+ * for it. A component property is a kind and a CSS property joined by a dot,
+ * and both halves are already named: the kind by `COMPONENT_KIND_SINGULAR` and
+ * the property by the table below. Nine kinds against eight properties is
+ * seventy-two rows somebody would have to write and keep, to say seventy-two
+ * times what composing them says once.
  */
+
+import {
+  COMPONENT_ASPECT,
+  COMPONENT_KIND_SINGULAR,
+  parseComponentProperty,
+} from "./analysis/components"
 
 /** The kinds a person sorts findings into. Ordered as the filter shows them. */
 export const FINDING_KINDS = [
@@ -89,10 +102,38 @@ const READINGS: Record<string, PropertyReading> = {
  * broken.
  */
 export function propertyReading(property: string): PropertyReading {
-  return READINGS[property] ?? { kind: "layout", label: property }
+  return READINGS[property] ?? componentReading(property) ?? { kind: "layout", label: property }
 }
 
-/** Whether a property has been given a name, for tests that guard the table. */
+/**
+ * The reading of a component property, composed from its two halves, or null
+ * when the property is not one.
+ *
+ * The kind of decision comes from the CSS half, because that is what it is: a
+ * button's corner radius and a container's corner radius are the same kind of
+ * decision about different things, which is exactly what the table above
+ * already says about `cta.radius` and `border-radius`.
+ */
+function componentReading(property: string): PropertyReading | null {
+  const component = parseComponentProperty(property)
+  if (!component) return null
+
+  const aspect = COMPONENT_ASPECT[component.styleProperty]
+  const underlying = READINGS[component.styleProperty]
+  if (!aspect || !underlying) return null
+
+  const subject = COMPONENT_KIND_SINGULAR[component.kind]
+  return { kind: underlying.kind, label: sentenceCase(`${subject} ${aspect}`) }
+}
+
+function sentenceCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+/**
+ * Whether a property has been given a name, for tests that guard the table. A
+ * component property counts as named when both of its halves are.
+ */
 export function isNamedProperty(property: string): boolean {
-  return property in READINGS
+  return property in READINGS || componentReading(property) !== null
 }

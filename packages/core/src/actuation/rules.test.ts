@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { Convention } from "../types"
 import { RULES_HEADER } from "./constants"
 import {
+  BUTTON_RADIUS_CONVENTION,
   CTA_LABEL_CONVENTION,
   HEADING_SIZE_CONVENTION,
   PROJECT,
@@ -100,6 +101,37 @@ describe("renderRulesFile", () => {
   it("carries no timestamp, so an unchanged product regenerates an identical file", () => {
     expect(render()).toBe(render())
   })
+
+  it("states a component convention under everywhere, because that is where it holds", () => {
+    const file = renderRulesFile({
+      projectName: PROJECT.name,
+      archetypes: [],
+      productWide: [BUTTON_RADIUS_CONVENTION],
+      routes,
+    })
+
+    expect(file).toContain("## Everywhere")
+    expect(file).toContain("- Set the corner radius of every button to 999px.")
+  })
+
+  it("names the control in an exception on a component convention", () => {
+    const file = renderRulesFile({
+      projectName: PROJECT.name,
+      archetypes: [],
+      productWide: [
+        {
+          ...BUTTON_RADIUS_CONVENTION,
+          exceptions: [{ screenId: "screen-pricing", reason: "the pill is the marketing style" }],
+        },
+      ],
+      routes,
+    })
+
+    expect(file).toContain(
+      "- /pricing is allowed to differ on the corner radius of its buttons. " +
+        "Leave it as it is. Reason: the pill is the marketing style",
+    )
+  })
 })
 
 describe("ruleLine", () => {
@@ -116,6 +148,14 @@ describe("ruleLine", () => {
   it("says when the value was chosen rather than counted", () => {
     expect(ruleLine({ ...CTA_LABEL_CONVENTION, status: "promoted" })).toContain(
       "You chose this value.",
+    )
+  })
+
+  it("tells an agent to apply a component convention wherever it writes one", () => {
+    // "Every", because an agent reading this is about to write a control
+    // somewhere the product has not been measured.
+    expect(ruleLine(BUTTON_RADIUS_CONVENTION)).toBe(
+      "Set the corner radius of every button to 999px. Measured on 4 screens.",
     )
   })
 

@@ -3,9 +3,13 @@
  * convention is a property of a family of screens.
  *
  * Every value on this page was counted rather than concluded. A convention
- * needs three or more agreeing screens before it exists at all (AGENTS.md
- * section 2), which is why each row states how many it was measured on and
- * opens onto those screens.
+ * needs three or more agreeing before it exists at all (AGENTS.md section 2),
+ * which is why each row states how many screens it was measured on and opens
+ * onto them.
+ *
+ * Under Everywhere sit the conventions that hold across the product rather
+ * than across a family: what each kind of component agrees on, counted over
+ * instances rather than screens, with no archetype consulted at any point.
  */
 
 import type { Metadata } from "next"
@@ -41,7 +45,7 @@ export default async function ConventionsPage() {
     <div className="flex flex-col">
       <PageHeader
         title="Conventions"
-        description="What this product already does, counted across its own screens. A value becomes a convention when it is the single most common one across three or more screens of a family."
+        description="What this product already does, counted across its own screens. A value becomes a convention when it is the single most common one across three or more screens of a family, or across three or more instances of one kind of component anywhere in the product."
       />
 
       <div className="flex flex-col gap-8 p-6">
@@ -64,9 +68,9 @@ export default async function ConventionsPage() {
 
         {total === 0 ? (
           <p className="text-xs leading-relaxed text-muted-foreground">
-            No conventions have been measured yet. A family of screens has to
-            agree on a value across three or more of them before Drift states
-            anything about it.
+            No conventions have been measured yet. Three or more screens of a
+            family, or three or more of one kind of component, have to agree on
+            a value before Drift states anything about it.
           </p>
         ) : null}
 

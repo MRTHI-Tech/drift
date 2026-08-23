@@ -56,6 +56,24 @@ export const COMPONENT_KIND_LABEL: Record<ComponentKind, string> = {
 }
 
 /**
+ * One of a kind, as a sentence names it. The plural above heads a list; this
+ * is what a finding says when it is about a single control, and the two are
+ * kept apart rather than derived from each other because "Radio buttons"
+ * without its s is not a radio button.
+ */
+export const COMPONENT_KIND_SINGULAR: Record<ComponentKind, string> = {
+  button: "button",
+  textInput: "text input",
+  radio: "radio button",
+  checkbox: "checkbox",
+  toggle: "toggle",
+  select: "dropdown",
+  datePicker: "date picker",
+  icon: "icon",
+  tab: "tab",
+}
+
+/**
  * The `type` of an input, and what it makes the input. Types absent from here
  * are inputs Drift has no opinion about, such as `hidden` or `file`.
  */
@@ -139,6 +157,89 @@ export const COMPONENT_PROPERTIES: Record<ComponentKind, readonly StyleProperty[
   datePicker: ["border-width", "border-style", "border-radius", "background-color", "font-size"],
   icon: ["color"],
   tab: ["border-radius", "border-width", "border-style", "background-color", "font-weight"],
+}
+
+/**
+ * What each property is called when a component convention is read aloud.
+ *
+ * Eight rows, covering every property any kind is judged on. Separate from the
+ * vocabulary's own table because the same CSS property reads differently once
+ * it is attached to a control: `color` on a paragraph is its text colour, and
+ * on an icon it is simply the icon's colour. The subject supplies the rest of
+ * the sentence, so this half only has to name the aspect.
+ */
+export const COMPONENT_ASPECT: Partial<Record<StyleProperty, string>> = {
+  color: "colour",
+  "background-color": "background colour",
+  "font-size": "type size",
+  "font-weight": "type weight",
+  padding: "inner spacing",
+  "border-radius": "corner radius",
+  "border-width": "border weight",
+  "border-style": "border style",
+}
+
+const KINDS = new Set<string>(COMPONENT_KINDS)
+
+/**
+ * The dotted name a component convention is stored and reported under.
+ *
+ * `radio.border-radius`, in the shape `cta.radius` already uses: a subject, a
+ * dot, an aspect. The CSS property keeps its own name rather than being
+ * translated, because the value stored beside it is the CSS value and the two
+ * have to stay readable as one fact.
+ */
+export function componentProperty(kind: ComponentKind, property: string): string {
+  return `${kind}.${property}`
+}
+
+/**
+ * The kind and the CSS property behind a dotted name, or null for a property
+ * that is not one of these.
+ *
+ * Strict on both halves: a name parses only when the kind exists and the
+ * property is one that kind is actually judged on. Anything else is a property
+ * from the other vocabulary, or from no vocabulary, and guessing at it would
+ * put a made-up sentence in front of somebody.
+ */
+export function parseComponentProperty(
+  property: string,
+): { kind: ComponentKind; styleProperty: StyleProperty } | null {
+  const dot = property.indexOf(".")
+  if (dot < 0) return null
+
+  const kind = property.slice(0, dot)
+  const styleProperty = property.slice(dot + 1)
+  if (!KINDS.has(kind)) return null
+
+  const judged: readonly string[] = COMPONENT_PROPERTIES[kind as ComponentKind]
+  if (!judged.includes(styleProperty)) return null
+
+  return { kind: kind as ComponentKind, styleProperty: styleProperty as StyleProperty }
+}
+
+/** Whether a property names a component convention rather than a screen one. */
+export function isComponentProperty(property: string): boolean {
+  return parseComponentProperty(property) !== null
+}
+
+/**
+ * A component convention in plain language, composed rather than model-written.
+ *
+ * Naming is on the list of things a model may write (AGENTS.md section 4), and
+ * this is the case where it has nothing to add: the subject is a control with
+ * a name, the aspect is one of eight, and the value is the value. A sentence
+ * assembled from those three is the same sentence a model would return, minus
+ * the call and minus the chance of it coming back in a voice Drift would not
+ * use.
+ */
+export function componentConventionLabel(
+  kind: ComponentKind,
+  property: string,
+  value: string,
+): string {
+  const aspect = COMPONENT_ASPECT[property as StyleProperty] ?? property
+  return `${COMPONENT_KIND_LABEL[kind]} have a ${aspect} of ${value}`
 }
 
 /** One component found on one screen. */
@@ -289,10 +390,27 @@ function plurality(
   return tied ? null : best
 }
 
+/**
+ * A component convention as it stands once it has been stored: the counting,
+ * plus the two things only the stored document knows.
+ *
+ * `exceptScreenIds` is the reason this type exists. Counting cannot know that
+ * somebody has already looked at a screen and said it is allowed to differ,
+ * and once they have, Drift does not ask again (AGENTS.md section 6).
+ */
+export interface StatedComponentConvention extends ComponentConventionProposal {
+  /** The stored convention this came from, for the finding to point at. */
+  conventionId?: string
+  /** Screens a person has excused from it, permanently. */
+  exceptScreenIds?: readonly string[]
+}
+
 /** One component that departs from what its kind agreed on. */
 export interface ComponentDivergence {
   kind: ComponentKind
   property: string
+  /** The convention it departs from, or null when it was never stored. */
+  conventionId: string | null
   screenId: string
   selector: string
   /** Exactly as the extraction recorded it. */
@@ -322,18 +440,25 @@ export interface ComponentDivergence {
  * An instance that supported the convention is never a divergence from it,
  * which is checked by value rather than assumed: the same screen can hold one
  * radio that agrees and one that does not, and only the second is a finding.
+ *
+ * A screen carrying an exception is passed over entirely, and the exception is
+ * on the whole screen rather than on one element because that is the shape a
+ * person records it in. Once somebody has said a screen is allowed to differ,
+ * Drift does not ask again (AGENTS.md section 6).
  */
 export function componentDivergences(
   instances: readonly ComponentInstance[],
-  conventions: readonly ComponentConventionProposal[],
+  conventions: readonly StatedComponentConvention[],
 ): ComponentDivergence[] {
   const divergences: ComponentDivergence[] = []
 
   for (const convention of conventions) {
     if (convention.confidence !== "high") continue
+    const excused = new Set(convention.exceptScreenIds ?? [])
 
     for (const instance of instances) {
       if (instance.kind !== convention.kind) continue
+      if (excused.has(instance.screenId)) continue
 
       const observed = instance.values[convention.property]
       if (observed === undefined) continue
@@ -342,6 +467,7 @@ export function componentDivergences(
       divergences.push({
         kind: convention.kind,
         property: convention.property,
+        conventionId: convention.conventionId ?? null,
         screenId: instance.screenId,
         selector: instance.selector,
         observedValue: observed,
