@@ -14,6 +14,7 @@ import { fixerFor, judgeRun, type CapturedScreen } from "@drift/agent"
 import {
   actuationCandidates,
   buildSignature,
+  claimedFixes,
   countTokens,
   githubClientFor,
   createRepositories,
@@ -23,8 +24,10 @@ import {
   openAutonomousPullRequests,
   persistTokenFindings,
   tokenDedupeKey,
+  verifyFixes,
   uploadScreenshot,
   type AutonomousRunResult,
+  type VerificationResult,
   type DriftConfig,
   type Finding,
   type Project,
@@ -75,6 +78,11 @@ export interface RunSummary {
   failures: TargetFailure[]
   /** What the autonomy boundary did with this run's findings, or null on a dry run. */
   actuation: AutonomousRunResult | null
+  /**
+   * Whether the fixes somebody accepted actually took, or null on a dry run
+   * and on a project where nobody has accepted one yet.
+   */
+  verification: VerificationResult | null
 }
 
 /** The authenticated GitHub client, without reaching past `@drift/core` for its type. */
@@ -119,7 +127,17 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
     }
     logger.log("render.planned", { targets: targets.length, routes: config.routes.length })
 
-    const { screenIds, findingIds, tokenFindings, distances, captured, knownFindings, failures } = await renderAll(
+    const {
+      screenIds,
+      findingIds,
+      tokenFindings,
+      distances,
+      captured,
+      knownFindings,
+      failures,
+      observedKeys,
+      renderedRoutes,
+    } = await renderAll(
       {
         targets,
         settings,
@@ -131,6 +149,12 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
         logger,
       },
     )
+
+    // Verification, before judgment, because it is about what the render just
+    // saw and nothing a model says can change the answer.
+    const verification = dryRun
+      ? null
+      : await verifyRun({ project, repositories, observedKeys, renderedRoutes, logger })
 
     // Judgment runs once, over everything the run captured, because an
     // archetype and its conventions are a property of the set rather than of
@@ -163,6 +187,7 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       findingIds,
       failures,
       actuation,
+      verification,
     }
 
     if (run) {
@@ -185,6 +210,8 @@ export async function runProject(options: RunOptions): Promise<RunSummary> {
       knownFindings,
       pullRequestsOpened: actuation?.opened.length ?? 0,
       findingsWaiting: actuation?.waiting.length ?? 0,
+      fixesConfirmed: verification?.fixed.length ?? 0,
+      fixesReopened: verification?.unfixed.length ?? 0,
       failed: failures.length,
       durationMs: Date.now() - startedAt.getTime(),
     })
@@ -222,6 +249,12 @@ interface TargetResult {
   /** Token findings this target raised, as written. */
   findings: Finding[]
   /**
+   * The dedupe key of every candidate the diff produced, written or not.
+   * A candidate suppressed because a resolved finding already carries its key
+   * is exactly what verification is looking for.
+   */
+  observedKeys: string[]
+  /**
    * How far each of those findings sat from the token it missed, by finding id.
    * Only the diff that raised it knows this, and the autonomy boundary needs it
    * later, so it is carried rather than recomputed.
@@ -245,6 +278,10 @@ async function renderAll(input: RenderAllInput): Promise<{
   captured: CapturedScreen[]
   knownFindings: number
   failures: TargetFailure[]
+  /** Every dedupe key this render raised, whether or not it was written. */
+  observedKeys: Set<string>
+  /** Routes that actually rendered, so a missing one is not read as a pass. */
+  renderedRoutes: Set<string>
 }> {
   const browser = await launchBrowser()
   input.logger.log("render.browser_ready", { chromium: browser.version() })
@@ -254,6 +291,8 @@ async function renderAll(input: RenderAllInput): Promise<{
   const tokenFindings: Finding[] = []
   const distances = new Map<string, number>()
   const captured: CapturedScreen[] = []
+  const observedKeys = new Set<string>()
+  const renderedRoutes = new Set<string>()
   let knownFindings = 0
   try {
     const failures = await captureAll(
@@ -267,10 +306,22 @@ async function renderAll(input: RenderAllInput): Promise<{
         for (const [findingId, distance] of result.distances) distances.set(findingId, distance)
         captured.push(result.captured)
         knownFindings += result.alreadyKnown
+        renderedRoutes.add(target.route)
+        for (const key of result.observedKeys) observedKeys.add(key)
       },
       input.logger,
     )
-    return { screenIds, findingIds, tokenFindings, distances, captured, knownFindings, failures }
+    return {
+      screenIds,
+      findingIds,
+      tokenFindings,
+      distances,
+      captured,
+      knownFindings,
+      failures,
+      observedKeys,
+      renderedRoutes,
+    }
   } finally {
     await browser.close()
     input.logger.log("render.browser_closed")
@@ -402,6 +453,12 @@ async function renderOne(
     distances: nearestTokenDistances(input.project.id, target.route, candidates, created),
     captured: { screen, screenshot: capture.screenshot },
     alreadyKnown,
+    // Every candidate, not only the ones written. A candidate suppressed
+    // because a resolved finding already carries its key is exactly the case
+    // verification exists to notice.
+    observedKeys: candidates.map((candidate) =>
+      tokenDedupeKey(input.project.id, target.route, candidate),
+    ),
   }
 }
 
@@ -441,6 +498,66 @@ interface ActuateRunInput {
   distances: ReadonlyMap<string, number>
   repositories: Repositories
   logger: Logger
+}
+
+interface VerifyRunInput {
+  project: Project
+  repositories: Repositories
+  observedKeys: Set<string>
+  renderedRoutes: Set<string>
+  logger: Logger
+}
+
+/**
+ * Asking whether the fixes somebody accepted actually took.
+ *
+ * A finding resolved as `conform` says a person agreed the screen should
+ * change. Nothing until now said the screen changed, and nothing could: a
+ * resolved finding suppresses its own recurrence, because `createIfNew`
+ * refuses any dedupe key already on file whatever status it carries. So the
+ * drift could return, be measured, and be silently discarded as already known.
+ *
+ * A fix that did not take reopens. That is the whole point of it: the finding
+ * is true again, and true findings are open. The resolution stays on file,
+ * because a `resolutions` document is append-only and a person's decision is
+ * not undone by the product ignoring it.
+ *
+ * Never throws. Verification is an extra thing a run knows, not a thing a run
+ * depends on.
+ */
+async function verifyRun(input: VerifyRunInput): Promise<VerificationResult | null> {
+  try {
+    const all = await input.repositories.findings.listByProject(input.project.id, 500)
+    const claimed = claimedFixes(all)
+    if (claimed.length === 0) return null
+
+    const summaries = await input.repositories.screens.listSummaries(input.project.id)
+    const result = verifyFixes({
+      claimed,
+      observed: input.observedKeys,
+      routes: input.renderedRoutes,
+      routeOf: new Map(summaries.map((screen) => [screen.id, screen.route])),
+    })
+
+    for (const finding of result.fixed) {
+      await input.repositories.findings.update(finding.id, { verifiedAt: new Date() })
+    }
+    for (const finding of result.unfixed) {
+      await input.repositories.findings.setStatus(finding.id, "open")
+    }
+
+    input.logger.log("verify.done", {
+      claimed: claimed.length,
+      fixed: result.fixed.length,
+      reopened: result.unfixed.map((finding) => finding.id),
+      unchecked: result.unchecked.length,
+    })
+
+    return result
+  } catch (error) {
+    input.logger.error("verify.error", { message: errorMessage(error) })
+    return null
+  }
 }
 
 /**

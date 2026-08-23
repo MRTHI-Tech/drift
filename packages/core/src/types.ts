@@ -310,6 +310,16 @@ export interface Finding {
   status: FindingStatus
   /** Deterministic from projectId + route + property + observedValue. */
   dedupeKey: string
+  /**
+   * When a run rendered the product and found the value gone, after somebody
+   * resolved this finding by conforming the screen. Null until then, and null
+   * forever on a finding nobody claimed to have fixed.
+   *
+   * A resolution is a decision; this is the evidence the decision took effect.
+   * They are different facts and a finding that carries only the first is a
+   * finding nobody has checked.
+   */
+  verifiedAt?: Date | null
   prNumber: number | null
   createdAt: Date
   resolvedAt: Date | null
