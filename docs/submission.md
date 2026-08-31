@@ -202,7 +202,7 @@ deadline so the loop could be finished and proven first.
 
 | Field | Value |
 | --- | --- |
-| Hosted project | `https://drift-dashboard-5lkpfywnxq-bq.a.run.app` |
+| Hosted project | `https://drift-dashboard-211195002301.africa-south1.run.app` |
 | Code repository | `https://github.com/MRTHI-Tech/drift` |
 | Spin-up instructions | `README.md` — "Spin up", plus `deploy.md` for a full cloud deployment from an empty project |
 | Architecture diagram | `docs/architecture-system.svg` and `docs/architecture-pipeline.svg` |
