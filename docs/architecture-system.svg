@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 690" width="1160" height="690" role="img" aria-label="Drift system architecture: a watched product on Cloud Run is rendered by a Cloud Run job started by Cloud Scheduler, a Pub/Sub push on redeploy, or manually; the job writes to Firestore and Cloud Storage, and every GitHub write passes an allowlist gate before reaching the watched repository.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4A5462"/>
+    </marker>
+    <marker id="arRust" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#B24A2E"/>
+    </marker>
+  </defs>
+
+  <rect width="1160" height="690" fill="#FFFFFF"/>
+
+  <g font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace">
+
+    <!-- ============ watched product ============ -->
+    <rect x="24" y="64" width="248" height="286" rx="10" fill="#FAFBFC" stroke="#B9C1CC" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="40" y="90" font-size="10.5" letter-spacing="1.4" fill="#6B7480">WATCHED PRODUCT</text>
+
+    <rect x="44" y="104" width="208" height="76" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
+    <text x="60" y="130" font-size="13" font-weight="600" fill="#131720">GitHub repository</text>
+    <text x="60" y="149" font-size="11" fill="#5A6472">drift.config.json</text>
+    <text x="60" y="166" font-size="11" fill="#5A6472">theme.ts — the tokens</text>
+
+    <rect x="44" y="250" width="208" height="76" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
+    <text x="60" y="276" font-size="13" font-weight="600" fill="#131720">Preview deployment</text>
+    <text x="60" y="295" font-size="11" fill="#5A6472">Cloud Run service</text>
+    <text x="60" y="312" font-size="11" fill="#5A6472">the real rendered product</text>
+
+    <!-- person -->
+    <rect x="44" y="470" width="208" height="70" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
+    <text x="60" y="497" font-size="13" font-weight="600" fill="#131720">A person</text>
+    <text x="60" y="516" font-size="11" fill="#5A6472">decides what a finding means</text>
+
+    <!-- ============ drift on google cloud ============ -->
+    <rect x="316" y="32" width="820" height="628" rx="12" fill="#F7FAF9" stroke="#1F6F5C" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="336" y="56" font-size="10.5" letter-spacing="1.4" fill="#1F6F5C">DRIFT · GOOGLE CLOUD PROJECT · africa-south1</text>
+
+    <!-- triggers -->
+    <rect x="336" y="76" width="180" height="54" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
+    <text x="350" y="99" font-size="12" font-weight="600" fill="#131720">Cloud Scheduler</text>
+    <text x="350" y="117" font-size="10.5" fill="#5A6472">unattended, every 6h</text>
+
+    <rect x="336" y="146" width="180" height="54" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
+    <text x="350" y="169" font-size="12" font-weight="600" fill="#131720">Pub/Sub push</text>
+    <text x="350" y="187" font-size="10.5" fill="#5A6472">the product redeployed</text>
+
+    <rect x="336" y="216" width="180" height="54" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
+    <text x="350" y="239" font-size="12" font-weight="600" fill="#131720">Manual / CLI</text>
+    <text x="350" y="257" font-size="10.5" fill="#5A6472">a person, at a terminal</text>
+
+    <path d="M516,103 H524 V200 H554" fill="none" stroke="#4A5462" stroke-width="1.4" marker-end="url(#ar)"/>
+    <path d="M516,173 H536 V228 H554" fill="none" stroke="#4A5462" stroke-width="1.4" marker-end="url(#ar)"/>
+    <path d="M516,243 H546 V256 H554" fill="none" stroke="#4A5462" stroke-width="1.4" marker-end="url(#ar)"/>
+
+    <!-- worker -->
+    <rect x="560" y="176" width="300" height="230" rx="8" fill="#FFFFFF" stroke="#1F6F5C" stroke-width="2"/>
+    <text x="578" y="204" font-size="13.5" font-weight="600" fill="#131720">drift-worker</text>
+    <text x="578" y="222" font-size="10.5" fill="#5A6472">Cloud Run job · Playwright + Chromium</text>
+
+    <rect x="578" y="236" width="264" height="26" rx="4" fill="#F1F5F3" stroke="#D3DCD8"/>
+    <text x="590" y="253" font-size="11" fill="#25303C">render every declared route</text>
+    <rect x="578" y="268" width="264" height="26" rx="4" fill="#F1F5F3" stroke="#D3DCD8"/>
+    <text x="590" y="285" font-size="11" fill="#25303C">extract computed styles + text</text>
+    <rect x="578" y="300" width="264" height="26" rx="4" fill="#F1F5F3" stroke="#D3DCD8"/>
+    <text x="590" y="317" font-size="11" fill="#25303C">sign · token diff · dedupe</text>
+    <rect x="578" y="332" width="264" height="26" rx="4" fill="#F5EEEA" stroke="#E2CFC6"/>
+    <text x="590" y="349" font-size="11" fill="#25303C">judge — Genkit → Gemini</text>
+    <rect x="578" y="364" width="264" height="26" rx="4" fill="#F1F5F3" stroke="#D3DCD8"/>
+    <text x="590" y="381" font-size="11" fill="#25303C">actuate — open what qualifies</text>
+
+    <path d="M252,300 H554" fill="none" stroke="#4A5462" stroke-width="1.4" marker-end="url(#ar)"/>
+    <text x="432" y="292" font-size="10.5" text-anchor="middle" fill="#6B7480">renders the deployed product</text>
+
+    <!-- data -->
+    <rect x="896" y="176" width="200" height="70" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
+    <text x="912" y="203" font-size="12.5" font-weight="600" fill="#131720">Firestore</text>
+    <text x="912" y="222" font-size="10.5" fill="#5A6472">runs · screens · findings</text>
+    <text x="912" y="238" font-size="10.5" fill="#5A6472">conventions · resolutions</text>
+
+    <rect x="896" y="266" width="200" height="70" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
+    <text x="912" y="293" font-size="12.5" font-weight="600" fill="#131720">Cloud Storage</text>
+    <text x="912" y="312" font-size="10.5" fill="#5A6472">full-page screenshots,</text>
+    <text x="912" y="328" font-size="10.5" fill="#5A6472">served through a proxy</text>
+
+    <path d="M860,211 H890" fill="none" stroke="#4A5462" stroke-width="1.4" marker-end="url(#ar)"/>
+    <path d="M860,301 H890" fill="none" stroke="#4A5462" stroke-width="1.4" marker-end="url(#ar)"/>
+
+    <!-- allowlist node -->
+    <rect x="336" y="350" width="180" height="76" rx="7" fill="#FFFFFF" stroke="#B24A2E" stroke-width="2"/>
+    <text x="350" y="374" font-size="12" font-weight="600" fill="#B24A2E">github.ts</text>
+    <text x="350" y="392" font-size="10.5" fill="#8A5442">one allowlist, every write</text>
+    <text x="350" y="409" font-size="10.5" fill="#8A5442">unprompted, and on a decision</text>
+
+    <path d="M554,372 H522" fill="none" stroke="#B24A2E" stroke-width="1.6" marker-end="url(#arRust)"/>
+
+    <path d="M560,500 H426 V432" fill="none" stroke="#B24A2E" stroke-width="1.6" marker-end="url(#arRust)"/>
+
+    <path d="M336,386 H296 V142 H258" fill="none" stroke="#B24A2E" stroke-width="1.6" marker-end="url(#arRust)"/>
+    <text x="288" y="264" font-size="10.5" fill="#B24A2E" transform="rotate(-90 288 264)" text-anchor="middle">pull requests</text>
+
+    <!-- dashboard -->
+    <rect x="560" y="456" width="300" height="114" rx="8" fill="#FFFFFF" stroke="#1F6F5C" stroke-width="2"/>
+    <text x="578" y="484" font-size="13.5" font-weight="600" fill="#131720">drift-dashboard</text>
+    <text x="578" y="503" font-size="10.5" fill="#5A6472">Cloud Run service · Next.js App Router</text>
+    <text x="578" y="521" font-size="10.5" fill="#5A6472">Firebase Auth, Google provider</text>
+    <text x="578" y="539" font-size="10.5" fill="#5A6472">findings · conventions · comparisons</text>
+    <text x="578" y="557" font-size="10.5" fill="#5A6472">receives the Pub/Sub push, starts the job</text>
+
+    <path d="M252,505 H554" fill="none" stroke="#4A5462" stroke-width="1.4" marker-end="url(#ar)"/>
+    <text x="404" y="497" font-size="10.5" text-anchor="middle" fill="#6B7480">resolves a finding</text>
+
+    <path d="M860,513 H1112 V226 H1102" fill="none" stroke="#4A5462" stroke-width="1.4" marker-end="url(#ar)"/>
+    <text x="1104" y="380" font-size="10.5" fill="#6B7480" transform="rotate(-90 1104 380)" text-anchor="middle">reads</text>
+
+    <!-- supporting -->
+    <rect x="336" y="596" width="760" height="44" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="352" y="623" font-size="11" fill="#5A6472">Cloud Build → Artifact Registry (both images, linux/amd64) · Secret Manager · Cloud Logging (one JSON line per event)</text>
+
+  </g>
+</svg>
