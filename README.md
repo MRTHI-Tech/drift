@@ -1,8 +1,9 @@
 # Drift
 
 Drift is a background agent that watches a deployed product, detects token
-drift and pattern drift in its rendered screens, lets you resolve findings,
-opens PRs with fixes, and exports learned conventions as a rules file.
+drift, pattern drift and component drift in its rendered screens, lets you
+resolve findings, opens PRs with fixes, checks on a later run whether those
+fixes took, and exports learned conventions as a rules file.
 
 `AGENTS.md` is the constitution for this repo. Read it before changing
 anything; where it conflicts with a convenient default, it wins.
@@ -203,6 +204,87 @@ or attributed to the wrong element is dropped silently and counted, and the
 counter is logged under `judge.gate`. Findings that survive are written as
 `findings` of type `pattern` through the same dedupe gate token findings use.
 
+## Component conventions and component drift
+
+An archetype compares a screen against screens that resemble it, which catches
+a screen drifting from its family and misses the thing a person notices first:
+one kind of control not looking like the others. A radio that is a circle here
+and a square there is not about screens at all, and comparing screens will
+never find it.
+
+So a second kind of convention is counted, over components rather than screens,
+and it is **product-wide by construction**. No archetype is consulted at any
+point. Two screens that resemble each other are already compared and two that
+do not are never compared, and a radio does not care which screen it is on.
+
+**A component kind is identity without a name.** Drift recognises nine, and the
+list is closed on purpose, the same way the word lists in `copy.ts` are closed:
+`button`, `textInput`, `radio`, `checkbox`, `toggle`, `select`, `datePicker`,
+`icon`, `tab`. A tag Drift cannot place is not a component, and saying nothing
+about it is the correct outcome.
+
+An element's ARIA role decides first, then its tag and its `type`. Nothing is
+recognised by selector or by test id, because most applications have neither: a
+real project measured here had twelve anchored selectors across twelve screens,
+and eleven of them were the document root. A `div` with `role="radio"` is a
+radio, and a `button` with `role="tab"` is a tab, which is how every tab bar in
+every component library is built.
+
+Each kind is judged on a short list of properties, and only those. Comparing
+every recorded property instead would find that two buttons sit at different
+margins, which is true, is not drift, and would bury the answer somebody
+wanted.
+
+| Kind | Judged on |
+| --- | --- |
+| `button` | `border-radius`, `background-color`, `font-size`, `font-weight`, `padding` |
+| `textInput`, `select`, `datePicker` | `border-width`, `border-style`, `border-radius`, `background-color`, `font-size` |
+| `radio`, `checkbox` | `border-radius`, `border-width`, `border-style`, `background-color` |
+| `toggle` | `border-radius`, `background-color` |
+| `tab` | `border-radius`, `border-width`, `border-style`, `background-color`, `font-weight` |
+| `icon` | `color` |
+
+**The unit is the instance, not the screen.** A screen convention counts
+screens and its floor is enforced in the repository; a component convention
+counts controls, because four buttons agreeing across two screens is real
+evidence about buttons and a floor written in screens would refuse it. Three
+agreeing instances is the floor, and it is enforced in
+`deriveComponentConventions`, which is the only place the instance count
+exists. A tie states nothing.
+
+Confidence is the same question either way: a value four or more instances hold
+and 80% of them render is `high`, 60% is `medium`, anything less is `low`.
+**Only a high-confidence component convention raises a finding.** A weaker one
+is still stated, because the rules file is worth telling somebody that most of
+their buttons are pills, and only a standard is worth interrupting them over.
+
+Conventions are counted over every screen the project holds, because a
+component convention is about the product and a run that rendered one route
+knows nothing about the product from that route alone. Findings are raised only
+on the screens this run captured, exactly as pattern drift is, so a run reports
+on what it looked at rather than on what it read.
+
+**No model is called anywhere in this phase, and none may be.** The value is
+read out of the extraction record, the convention is counting, and the
+divergence is one value compared against another. Nothing is proposed, so there
+is nothing for the reconciliation gate to verify: the gate stands where a model
+speaks (`AGENTS.md` section 3), and this is the deterministic path token
+findings already take. The convention's plain-language label is composed by
+Drift rather than written by a model, for the same reason.
+
+A component finding is stored as a `findings` document of type `pattern` whose
+property is dotted with its kind — `radio.border-radius`, or
+`textInput.border-style` — and it says what it saw, with counts and no verdict:
+
+> This radio button has a corner radius of 4px. 11 of 13 radio buttons in this
+> product have 9999px.
+
+The dotted property is half the dedupe key, so a button and a radio rendering
+the same wrong radius on the same route stay two findings. They are two: one
+kind of control looking wrong is not evidence about the other. Two radios on
+one route rendering it are one finding, cited at the first in document order,
+exactly as a hardcoded colour inherited across a screen is one finding.
+
 ## Resolutions, pull requests, and the rules file
 
 A finding is an observation. What happens to it is a person's decision, and
@@ -299,6 +381,67 @@ pnpm worker -- rules --project <projectId> --dry-run
 leaves the process, against `GITHUB_REPO_ALLOWLIST` (`AGENTS.md` section 8). An
 unset variable means no repo is writable rather than every repo. A project whose
 repo is not on it still renders, signs, diffs, and judges; it opens nothing.
+
+## Verifying that a fix took
+
+A resolution is a decision and it is not evidence. A finding resolved as
+`conform` says a person agreed the screen should change; it does not say the
+screen changed. Between those two sits every fix that was merged and did not
+take, every one that was closed unmerged, and every patch that edited the
+literal somebody meant rather than the one the screen was rendering.
+
+That gap is not merely unverified, it is invisible. `createIfNew` refuses to
+write a finding whose dedupe key already exists, whatever status that finding
+carries, so a resolved finding suppresses its own recurrence forever. The drift
+comes back, Drift renders it, and says nothing, because it believes the matter
+is closed.
+
+So every run asks the question the pull request could not answer: **is the
+value still on the screen?** Nothing extra is rendered and nothing extra is
+measured — the answer is already in what the run just did, which is why
+verification runs before judgment and why a model cannot change its result.
+
+What makes a finding worth asking about is that it carries a pull request
+number, not what status it holds. Merging a pull request does not resolve the
+finding it came from, so a merged fix leaves its finding `open`; the first
+version of this asked only about `resolved_conform` and against the real
+project that turned out to be almost nothing. The check is asked about token
+findings, whose recurrence a render answers on its own.
+
+Whether the value is gone is only half the answer. What the pull request did is
+the other half, and without it a fix waiting to be merged and a fix that was
+merged and did nothing read identically.
+
+| Outcome | The value is | The pull request was | What it means |
+| --- | --- | --- | --- |
+| `fixed` | gone | anything | It worked, and the render is the evidence |
+| `ineffective` | still there | merged | It went in and the product did not move |
+| `pending` | still there | open | Exactly what anybody would expect |
+| `abandoned` | still there | closed unmerged | The drift is real and nothing is coming |
+| `unchecked` | not rendered | anything | This run did not cover that route, so there is no evidence either way |
+
+**The merge is not the evidence.** A pull request opened for a finding was
+merged, the branch went to `main`, the preview redeployed, and the value it was
+supposed to change is still on the screen. Anything concluding "merged,
+therefore fixed" would close a finding that is still true.
+
+A finding whose value is gone is stamped with `verifiedAt` and moved to
+`resolved_conform` if it was still open. A finding whose value is still there
+reopens, whatever it was resolved as. The `resolutions` document stays on file
+either way: it is append-only, and a person's decision is not undone by the
+product ignoring it.
+
+Two statuses are left alone whatever they carry. An exception means somebody
+said this screen is allowed to differ, permanently, and asking again would be
+Drift relitigating a decision it was told to respect.
+`resolved_update_siblings` means this screen was the right one and the others
+move, so its value staying is the success and its absence would be the
+surprise. A pull request Drift cannot read leaves its finding `pending`, which
+is the quiet answer; guessing would put a false alarm among the real ones.
+
+Verification never throws. It is an extra thing a run knows, not a thing a run
+depends on. Every outcome is logged under `verify.done`, and the line worth
+reading is `ineffective`.
 
 ## The dashboard
 
@@ -457,12 +600,14 @@ The worker loads a project, reads its `drift.config.json` and its token file off
 GitHub, renders every declared route at every declared viewport with motion
 disabled, walks the resolved computed styles and visible text, signs each
 screen, diffs it against the tokens, uploads a full-page screenshot to Cloud
-Storage, and writes the `screens`, `findings`, and `runs` documents. It then
-classifies each screen into an archetype, derives that archetype's conventions,
-and raises pattern findings where a screen departs from them, with every
-model-cited value reconciled against the screen's own record first. Last, it
-asks the autonomy boundary about every token finding it raised and opens the
-pull requests that qualify.
+Storage, and writes the `screens`, `findings`, and `runs` documents. Before it
+judges anything it checks the fixes somebody already claimed, against the render
+it has just taken. It then classifies each screen into an archetype, derives
+that archetype's conventions, and raises pattern findings where a screen departs
+from them, with every model-cited value reconciled against the screen's own
+record first, and counts what each kind of component in the product agrees on
+without a model anywhere in it. Last, it asks the autonomy boundary about every
+token finding it raised and opens the pull requests that qualify.
 
 A finding can be resolved four ways, from the dashboard's API routes or from the
 worker's temporary CLI command, and a resolution opens the patch it implies,
