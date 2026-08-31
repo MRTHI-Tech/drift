@@ -1,8 +1,12 @@
 # The dashboard, as a Cloud Run service.
 #
 # Built from the repo root, not from this directory: it is a pnpm workspace and
-# the build needs the lockfile, the workspace file, and `packages/core`, which
-# the dashboard consumes as TypeScript source rather than as a built package.
+# the build needs the lockfile, the workspace file, and both `packages/core` and
+# `packages/agent`, which the dashboard consumes as TypeScript source rather
+# than as built packages. The agent is here because resolving a finding can
+# reach the Fixer, so a route handler imports it (AGENTS.md section 10a); a
+# workspace package this image installs but never copies is a build that fails
+# at the import rather than at the install.
 #
 #   gcloud builds submit --config cloudbuild.dashboard.yaml .
 #
@@ -43,6 +47,7 @@ RUN pnpm install --frozen-lockfile --filter @drift/dashboard...
 # ---- build ------------------------------------------------------------------
 FROM deps AS build
 COPY packages/core packages/core
+COPY packages/agent packages/agent
 COPY apps/dashboard apps/dashboard
 COPY tsconfig.base.json ./
 
