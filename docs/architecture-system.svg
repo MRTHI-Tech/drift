@@ -19,7 +19,7 @@
     <rect x="44" y="104" width="208" height="76" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
     <text x="60" y="130" font-size="13" font-weight="600" fill="#131720">GitHub repository</text>
     <text x="60" y="149" font-size="11" fill="#5A6472">drift.config.json</text>
-    <text x="60" y="166" font-size="11" fill="#5A6472">theme.ts — the tokens</text>
+    <text x="60" y="166" font-size="11" fill="#5A6472">theme.ts, the tokens</text>
 
     <rect x="44" y="250" width="208" height="76" rx="7" fill="#FFFFFF" stroke="#C6CCD6" stroke-width="1.5"/>
     <text x="60" y="276" font-size="13" font-weight="600" fill="#131720">Preview deployment</text>
@@ -64,9 +64,9 @@
     <rect x="578" y="300" width="264" height="26" rx="4" fill="#F1F5F3" stroke="#D3DCD8"/>
     <text x="590" y="317" font-size="11" fill="#25303C">sign · token diff · dedupe</text>
     <rect x="578" y="332" width="264" height="26" rx="4" fill="#F5EEEA" stroke="#E2CFC6"/>
-    <text x="590" y="349" font-size="11" fill="#25303C">judge — Genkit → Gemini</text>
+    <text x="590" y="349" font-size="11" fill="#25303C">judge via Genkit and Gemini</text>
     <rect x="578" y="364" width="264" height="26" rx="4" fill="#F1F5F3" stroke="#D3DCD8"/>
-    <text x="590" y="381" font-size="11" fill="#25303C">actuate — open what qualifies</text>
+    <text x="590" y="381" font-size="11" fill="#25303C">actuate, open what qualifies</text>
 
     <path d="M252,300 H554" fill="none" stroke="#4A5462" stroke-width="1.4" marker-end="url(#ar)"/>
     <text x="432" y="292" font-size="10.5" text-anchor="middle" fill="#6B7480">renders the deployed product</text>

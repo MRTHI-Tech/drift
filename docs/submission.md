@@ -1,4 +1,4 @@
-# Submission copy — All Things Agentic Hackathon
+# Submission copy for the All Things Agentic Hackathon
 
 Paste-ready text for the Devpost form. Nothing here is aspirational: every
 capability described is in the repository and has run against a real product.
@@ -20,11 +20,9 @@ starts it and nobody prompts it.
 
 **Drift**
 
-## Tagline (elevator pitch, ~200 characters)
+## Tagline (elevator pitch, 187 characters)
 
-> Drift watches your deployed product, finds where the design has quietly come
-> apart, and opens the pull requests that fix it — without being asked, and
-> without ever guessing at a value it did not measure.
+> Drift watches your deployed product for values that missed your design tokens and screens that disagree with their siblings, then opens the pull requests that fix them. Nobody asks it to.
 
 ---
 
@@ -50,13 +48,13 @@ the honest answer to "is our product still consistent?" is that nobody knows.
 
 ### What Drift does
 
-Drift is a background agent that watches a **deployed** product — the real
-rendered thing, not the source — and does five things on its own.
+Drift is a background agent that watches a **deployed** product, the real
+rendered thing rather than the source, and does five things on its own.
 
 **It measures.** A Cloud Run job renders every route the watched repo declares,
 at every viewport it declares, with Playwright. It walks the resolved computed
 styles and the visible text of every element and stores that record. That
-record — not a model's impression of a screenshot — is the evidence for
+record, not a model's impression of a screenshot, is the evidence for
 everything that follows.
 
 **It finds two kinds of drift.** *Token drift* is a value that missed the
@@ -66,7 +64,7 @@ and raises what sits off them with the nearest token attached. *Pattern drift*
 is a screen that departs from what its own siblings agreed on: screens are
 grouped into families by embedding distance, a value becomes a convention when
 three or more screens of a family agree on it, and a screen that disagrees is
-raised against it. A third kind, *component drift*, is counted product-wide —
+raised against it. A third kind, *component drift*, is counted product-wide:
 square radio buttons on one screen when every other radio in the product is
 round.
 
@@ -83,8 +81,8 @@ configuration flag.
 close enough to the token it missed has a right answer that requires no human
 judgment, so Drift fixes it: a bounded literal-for-literal substitution,
 branched, opened, with before-and-after renders in the body. Where the value is
-never written in source — composed at runtime from a variant map, say — the
-substitution fails first and *then* a Gemini-backed Fixer reads the repository
+never written in source, because it is composed at runtime from a variant map,
+the substitution fails first and *then* a Gemini-backed Fixer reads the repository
 through a fixed set of tools and writes the correction. Everything it proposes
 passes a second gate that proves the edit applies to a file it actually read,
 matches exactly once, stays in bounds, and arrives at the value the finding
@@ -96,9 +94,9 @@ function, in one file, that returns its reason either way.
 somebody resolves a finding and the pull request merges, the next run
 re-renders the product and asks the only question that settles it: is the value
 still on the screen? A merged, deployed fix that did not move the render is
-reported as **ineffective** rather than fixed — the single most common way a
-fix silently fails, and invisible to every tool that treats the merge as the
-evidence.
+reported as **ineffective** rather than fixed. That is the single most common
+way a fix silently fails, and it is invisible to every tool that treats the
+merge as the evidence.
 
 And what the product settles on leaves the dashboard: conventions are exported
 as `drift.rules.md`, committed to the watched repo, so the coding agent writing
@@ -114,9 +112,10 @@ that is the only path to a model anywhere in the system.
 The architectural spine is a rule the repository enforces rather than
 recommends: **rendering, extraction, token diffing, dedupe, signature
 construction, convention counting and the drift score never call a model, and
-may not.** Model calls are confined to six flows — archetype labelling, pattern
-judgment over pre-computed candidates, convention labelling, screen embedding,
-and the Fixer — and each returns structured output through a schema. A model
+may not.** Model calls are confined to six flows (screen embedding, archetype
+classification, convention derivation, convention labelling, pattern judgment
+over pre-computed candidates, and the Fixer), and each returns structured
+output through a schema. A model
 that is unavailable costs a run its pattern findings and nothing else; every
 deterministic finding still lands.
 
@@ -160,7 +159,7 @@ the product being watched:
 
 - the resolved computed styles and visible text of each rendered screen, extracted in-browser
 - the watched repo's design-token file, read as source text and never executed
-- `drift.config.json` in the watched repo — the only declaration of what gets rendered; Drift never crawls
+- `drift.config.json` in the watched repo, the only declaration of what gets rendered, because Drift never crawls
 - repository contents and pull requests through the GitHub API, under a GitHub App installation the user granted
 - full-page screenshots in Cloud Storage
 
@@ -184,7 +183,7 @@ what warm means.
 ### What's next
 
 Production watching alongside preview, a second rules-file format for other
-coding agents, and light mode — all deliberately fenced off until after the
+coding agents, and light mode, all deliberately fenced off until after the
 deadline so the loop could be finished and proven first.
 
 ---
@@ -204,63 +203,63 @@ deadline so the loop could be finished and proven first.
 | --- | --- |
 | Hosted project | `https://drift-dashboard-211195002301.africa-south1.run.app` |
 | Code repository | `https://github.com/MRTHI-Tech/drift` |
-| Spin-up instructions | `README.md` — "Spin up", plus `deploy.md` for a full cloud deployment from an empty project |
+| Spin-up instructions | `README.md`, under "Spin up", plus `deploy.md` for a full cloud deployment from an empty project |
 | Architecture diagram | `docs/architecture-system.svg` and `docs/architecture-pipeline.svg` |
 | Demo video | *(to add)* |
 
-**Note for judges, worth stating on the form:** the dashboard is per-person —
-signing in creates your own empty Drift, and a project is connected by granting
-a GitHub App installation over your own repository. The demo video is the
+**Note for judges, worth stating on the form:** the dashboard is per-person.
+Signing in creates your own empty Drift, and a project is connected by granting
+a GitHub App installation over your own repository, so the demo video is the
 walkthrough of a populated instance.
 
 ---
 
-## Demo video — ~4 minutes
+## Demo video, about 4 minutes
 
 Four beats, roughly a minute each. Requirements the video must hit: the
 problem, the value proposition, a live demo, and visible proof of Google Cloud
 deployment.
 
-**0:00–0:35 — the problem, shown not stated.** Two onboarding screens side by
+**0:00 to 0:35. The problem, shown not stated.** Two onboarding screens side by
 side from the watched product. One says "Continue", one says "Submit". One
 opens "Let's get you set up", one opens "Account provisioning complete". Both
 shipped. Both passed review. Line: *nothing in a normal pipeline ever looks
 across screens.*
 
-**0:35–1:40 — a run, unprompted.** Cut to the Cloud Console: the Cloud Run job,
+**0:35 to 1:40. A run, unprompted.** Cut to the Cloud Console: the Cloud Run job,
 the Scheduler entry, the deploy that just published to Pub/Sub. Then the
 dashboard filling with findings from a run nobody started. Show one token
-finding with its nearest token, and — the beat to hold — the pull request
+finding with its nearest token, and then the beat to hold: the pull request
 already open on GitHub that nobody asked for. This is the 40% criterion on
 screen.
 
-**1:40–2:30 — it sees the product, not the screen.** The conventions page: what
+**1:40 to 2:30. It sees the product, not the screen.** The conventions page: what
 this family of screens agreed on, each row opening onto the screens it was
-counted across. Then a component finding — a square radio next to a round one —
+counted across. Then a component finding, a square radio next to a round one,
 which needs no narration at all. Then the one that proves it is not noise: a
 finding raised and deliberately *not* auto-fixed, with the reason logged. Line:
 *Drift declining to act is as much the product as Drift acting.*
 
-**2:30–3:20 — judgment stays yours, typing becomes Drift's.** Resolve a
+**2:30 to 3:20. Judgment stays yours, typing becomes Drift's.** Resolve a
 finding as conform. The mechanical patch cannot reach the value, the Fixer
 reads the repo, the fix gate passes it, a draft pull request appears with
 before-and-after renders in the body. Merge it and one other; hand-fix a third
 one *wrong*, on camera. Deploy.
 
-**3:20–4:00 — the question nobody else asks.** The verification run, and three
+**3:20 to 4:00. The question nobody else asks.** The verification run, and three
 outcomes on one screen: **fixed**, **ineffective**, **pending**. Land it:
 *the merge is not the evidence. The render is.* Close on `drift.rules.md` in
-the watched repo — the conventions leaving the dashboard and reaching the agent
+the watched repo: the conventions leaving the dashboard and reaching the agent
 that writes the next screen.
 
 ---
 
-## Before you submit — the four things that are not writing
+## Before you submit: the four things that are not writing
 
 1. **Merge `feat/github-app` into `main`.** Judges open the default branch, and
    `main` is 45 commits behind the finished product.
 2. **Redeploy both images.** The live revision is from 18 August and predates
    component drift, fix verification and the GitHub App.
 3. **Record the video**, and put its URL on the form and in the README.
-4. **Attach the diagrams** — Devpost wants an image, and Best Architectural
+4. **Attach the diagrams.** Devpost wants an image, and Best Architectural
    Design is a $5k category the gated pipeline diagram is aimed squarely at.
