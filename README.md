@@ -5,6 +5,14 @@ drift, pattern drift and component drift in its rendered screens, lets you
 resolve findings, opens PRs with fixes, checks on a later run whether those
 fixes took, and exports learned conventions as a rules file.
 
+**[Watch the two-minute demo](https://youtu.be/4znhS1rlLYg)**
+
+![The runs page: every run Drift has made, newest first, with the latest one
+open and the findings it raised listed underneath](docs/images/runs.png)
+
+*Every time the watched product deploys, Drift renders it and compares it
+against itself. The latest run is open, and what it raised is listed inline.*
+
 `AGENTS.md` is the constitution for this repo. Read it before changing
 anything; where it conflicts with a convenient default, it wins.
 
@@ -126,16 +134,36 @@ radius on the screen is compared against those scales, and anything off them
 becomes a `findings` document of type `token` carrying the element, the
 property, the observed value, and the nearest token.
 
+![A token finding: a button rendering rgb(79, 70, 229) against the nearest
+token, colors.brand.600 at #4338CA, with the evidence and the three ways to
+answer it](docs/images/token-finding.png)
+
+*A token finding names the property, what the screen actually rendered, the
+nearest token, and where it was declared. Nothing here was inferred by a model.*
+
 Findings go through the dedupe gate: one finding per project, route, property,
 and observed value, whatever the status of the finding that already holds that
 key. A second run over an unchanged screen therefore raises nothing, and a
 finding that has been dismissed stays dismissed.
+
+![A run reporting nothing new, thirty times over, on a product that has
+stopped drifting](docs/images/quiet-runs.png)
+
+*Which is why a settled product produces quiet runs. Everything already raised
+stays raised, and a run that finds nothing says so rather than showing an empty
+page.*
 
 A project whose config declares no `tokenDefinitionsPath`, or whose path is
 stale, still renders and still signs. The run logs `tokens.not_declared`,
 `tokens.missing`, or `tokens.unreadable` and skips the diff.
 
 ## Archetypes, conventions, and pattern drift
+
+![The comparison view: the divergent screen beside the screens its value was
+counted against, with the cited element boxed on each](docs/images/comparison-view.png)
+
+*The comparison view. This screen's action names itself; five of its siblings
+use a generic label. The evidence is the real capture of every screen involved.*
 
 Judgment runs once per run, after every route is in, because an archetype and
 its conventions are properties of a set of screens rather than of any one
@@ -365,6 +393,11 @@ than patches, and `AGENTS.md` section 10b is what bounds them: Drift composes
 them whole, never parses one it did not write, and never overwrites a
 `drift.config.json` that is already there.
 
+![drift.rules.md as Drift would write it now: the conventions this product
+already keeps, in imperative language for a coding agent](docs/images/rules-file.png)
+
+*The rules file, previewed from the conventions page before it is committed.*
+
 **The rules file** is `drift.rules.md` at the root of the watched repo, written
 in imperative plain language for a coding agent: what to label the action on
 each kind of screen, what to set its type to, how the copy reads, and which
@@ -461,6 +494,10 @@ anyone without one, but that is an optimistic check and not the gate.
 | Conventions | Grouped by archetype, each row opening onto the screens it was counted across, plus the `drift.rules.md` card |
 
 ### Adding a project
+
+![The add project dialog: a repo picked from the GitHub App installation, a
+preview URL, and the four checks that run while the form is still
+open](docs/images/adding-a-project.png)
 
 Two fields, because two things cannot be derived: which repo, and where it is
 deployed. The name is filled in from the repo and can be edited. Everything else
